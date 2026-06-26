@@ -12,6 +12,7 @@
 #include "ns800_led_app.h"
 #include "ns800_pwm_app.h"
 #include "ns800_power_control.h"
+#include "ns800_svm_open_loop_test.h"
 
 #include <rtthread.h>
 
@@ -65,7 +66,7 @@ static int ns800_adc_bg_thread_start(void)
 static void ns800_power_ctrl_thread_entry(void *parameter)
 {
     RT_UNUSED(parameter);
-    ns800_power_control_start();
+    ns800_svm_open_loop_test_start();
     while (1)
     {
         rt_thread_mdelay(1000);
@@ -101,7 +102,6 @@ int ns800_app_main(void)
     ns800_button_app_start();
     ns800_display_app_start();
     ns800_pwm_app_start();
-    ns800_adc_bg_thread_start();
     ns800_power_ctrl_thread_start();
     
     ns800_led_app_start();
