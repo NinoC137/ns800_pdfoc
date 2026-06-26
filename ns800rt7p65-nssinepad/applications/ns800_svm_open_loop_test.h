@@ -24,6 +24,7 @@ typedef struct
     volatile rt_uint32_t isr_count;
     volatile rt_uint32_t fault_flags;
     volatile float angle_rad;
+    svm_abc_f32_t last_ac_voltage_abc;
     svm_dual_out_t last_duty;
 } ns800_svm_open_loop_status_t;
 

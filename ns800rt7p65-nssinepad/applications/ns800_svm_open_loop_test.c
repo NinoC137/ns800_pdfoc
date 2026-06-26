@@ -30,11 +30,17 @@
 #define NS800_SVM_OL_DEFAULT_XI         (0.63f)
 #define NS800_SVM_OL_DEFAULT_VPEAK      (12.0f)
 #define NS800_SVM_OL_DEFAULT_FREQ       (50.0f)
+#define NS800_SVM_OL_PRINT_STACK        1024U
+#define NS800_SVM_OL_PRINT_PRIO         20U
+#define NS800_SVM_OL_PRINT_TICK         10U
+#define NS800_SVM_OL_PRINT_PERIOD_MS    10U
+#define NS800_SVM_OL_PRINT_SCALE        (1000.0f)
 
 static volatile rt_bool_t ol_running = RT_FALSE;
 static svm_nco_t ol_nco;
 static svm_svm_config_t ol_svm_cfg;
 static ns800_svm_open_loop_status_t ol_status;
+static rt_thread_t ol_print_thread = RT_NULL;
 
 static float ol_clamp(float value, float min_value, float max_value)
 {
@@ -68,6 +74,7 @@ void ns800_svm_open_loop_test_isr(void)
 {
     svm_sincos_f32_t sc;
     svm_ab_f32_t u_ab;
+    svm_abc_f32_t u_abc;
     svm_status_t status;
 
     if (ol_running == RT_FALSE)
@@ -80,6 +87,7 @@ void ns800_svm_open_loop_test_isr(void)
     svm_lut_sincos(ol_nco.angle_rad, &sc);
     u_ab.alpha = ol_status.voltage_peak_v * sc.cos_theta;
     u_ab.beta = ol_status.voltage_peak_v * sc.sin_theta;
+    svm_inverse_clarke(&u_ab, &u_abc);
 
     status = svm_compute_dual(&u_ab,
                               ol_status.xi,
@@ -89,6 +97,7 @@ void ns800_svm_open_loop_test_isr(void)
                               &ol_status.last_duty);
     ol_status.fault_flags = (rt_uint32_t)status;
     ol_status.angle_rad = ol_nco.angle_rad;
+    ol_status.last_ac_voltage_abc = u_abc;
     ol_status.isr_count++;
 
     ns800_pwm_app_write_svm(&ol_status.last_duty);
@@ -96,6 +105,63 @@ void ns800_svm_open_loop_test_isr(void)
 
     EPWM_clearEventTriggerInterruptFlag(NS800_SVM_OL_EPWM_BASE);
     __DSB();
+}
+
+static int ol_float_to_i32(float value)
+{
+    if (value >= 0.0f)
+    {
+        return (int)(value + 0.5f);
+    }
+    return (int)(value - 0.5f);
+}
+
+static void ns800_svm_open_loop_print_entry(void *parameter)
+{
+    int va;
+    int vb;
+    int vc;
+
+    RT_UNUSED(parameter);
+
+    while (1)
+    {
+        if (ol_running == RT_TRUE)
+        {
+            // va = ol_float_to_i32(ol_status.last_ac_voltage_abc.a * NS800_SVM_OL_PRINT_SCALE);
+            // vb = ol_float_to_i32(ol_status.last_ac_voltage_abc.b * NS800_SVM_OL_PRINT_SCALE);
+            // vc = ol_float_to_i32(ol_status.last_ac_voltage_abc.c * NS800_SVM_OL_PRINT_SCALE);
+
+            va = ol_float_to_i32((ol_status.last_duty.upper.ta * ol_status.hvdc_v -
+                      ol_status.last_duty.lower.ta * ol_status.lvdc_v) * NS800_SVM_OL_PRINT_SCALE);
+            vb = ol_float_to_i32((ol_status.last_duty.upper.tb * ol_status.hvdc_v -
+                                ol_status.last_duty.lower.tb * ol_status.lvdc_v) * NS800_SVM_OL_PRINT_SCALE);
+            vc = ol_float_to_i32((ol_status.last_duty.upper.tc * ol_status.hvdc_v -
+                                ol_status.last_duty.lower.tc * ol_status.lvdc_v) * NS800_SVM_OL_PRINT_SCALE);
+
+            rt_kprintf("%d,%d,%d\r\n", va, vb, vc);
+        }
+        rt_thread_mdelay(1);
+    }
+}
+
+static void ns800_svm_open_loop_print_start(void)
+{
+    if (ol_print_thread != RT_NULL)
+    {
+        return;
+    }
+
+    ol_print_thread = rt_thread_create("svm_plot",
+                                       ns800_svm_open_loop_print_entry,
+                                       RT_NULL,
+                                       NS800_SVM_OL_PRINT_STACK,
+                                       NS800_SVM_OL_PRINT_PRIO,
+                                       NS800_SVM_OL_PRINT_TICK);
+    if (ol_print_thread != RT_NULL)
+    {
+        rt_thread_startup(ol_print_thread);
+    }
 }
 
 int ns800_svm_open_loop_test_set(float hvdc_v,
@@ -131,6 +197,7 @@ int ns800_svm_open_loop_test_start(void)
     Interrupt_register(NS800_SVM_OL_EPWM_IRQn, &ns800_svm_open_loop_test_isr);
     Interrupt_enable(NS800_SVM_OL_EPWM_IRQn);
     ol_running = RT_TRUE;
+    ns800_svm_open_loop_print_start();
     return 0;
 }
 

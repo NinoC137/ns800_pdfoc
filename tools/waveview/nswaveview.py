@@ -148,6 +148,9 @@ canvas {
   <section class="toolbar">
     <button id="pauseBtn">暂停</button>
     <button id="clearBtn">清空</button>
+    <button id="xZoomInBtn">放大X</button>
+    <button id="xZoomOutBtn">缩小X</button>
+    <label class="field">X samples <input id="xWindow" type="number" min="20" max="20000" step="10" value="1000"></label>
     <label class="field"><input id="autoScale" type="checkbox" checked>自动缩放</label>
     <label class="field">Y min <input id="yMin" type="number" value="-1000"></label>
     <label class="field">Y max <input id="yMax" type="number" value="1000"></label>
@@ -170,6 +173,9 @@ const canvas = document.getElementById("plot");
 const ctx = canvas.getContext("2d");
 const pauseBtn = document.getElementById("pauseBtn");
 const clearBtn = document.getElementById("clearBtn");
+const xZoomInBtn = document.getElementById("xZoomInBtn");
+const xZoomOutBtn = document.getElementById("xZoomOutBtn");
+const xWindowInput = document.getElementById("xWindow");
 const autoScale = document.getElementById("autoScale");
 const yMinInput = document.getElementById("yMin");
 const yMaxInput = document.getElementById("yMax");
@@ -188,6 +194,17 @@ let sampleCount = 0;
 let badLines = 0;
 let lastCount = 0;
 let lastRateTime = performance.now();
+
+function clampWindow(value) {
+  if (!Number.isFinite(value)) return 1000;
+  return Math.max(20, Math.min(20000, Math.round(value)));
+}
+
+function setWindowSize(value) {
+  windowSize = clampWindow(value);
+  xWindowInput.value = String(windowSize);
+  if (rows.length > windowSize) rows.splice(0, rows.length - windowSize);
+}
 
 function resizeCanvas() {
   const dpr = window.devicePixelRatio || 1;
@@ -209,7 +226,7 @@ function setLegend(n) {
 }
 
 function ingest(msg) {
-  if (msg.window) windowSize = msg.window;
+  if (msg.window && !xWindowInput.dataset.touched) setWindowSize(msg.window);
   if (msg.source) sourceEl.textContent = msg.source;
   if (typeof msg.bad_lines === "number") badLines = msg.bad_lines;
   if (!msg.values || paused) {
@@ -321,8 +338,21 @@ pauseBtn.addEventListener("click", () => {
 clearBtn.addEventListener("click", () => {
   rows = [];
 });
+xZoomInBtn.addEventListener("click", () => {
+  xWindowInput.dataset.touched = "1";
+  setWindowSize(windowSize / 2);
+});
+xZoomOutBtn.addEventListener("click", () => {
+  xWindowInput.dataset.touched = "1";
+  setWindowSize(windowSize * 2);
+});
+xWindowInput.addEventListener("change", () => {
+  xWindowInput.dataset.touched = "1";
+  setWindowSize(Number(xWindowInput.value));
+});
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
+setWindowSize(windowSize);
 draw();
 
 const stream = new EventSource("/stream");
