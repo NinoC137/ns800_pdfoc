@@ -135,7 +135,7 @@ static void ns800_svm_open_loop_print_entry(void *parameter)
             // vb = ol_float_to_i32(ol_status.last_ac_voltage_abc.b * NS800_SVM_OL_PRINT_SCALE);
             // vc = ol_float_to_i32(ol_status.last_ac_voltage_abc.c * NS800_SVM_OL_PRINT_SCALE);
 
-            //开环PWM合成测试
+            //开环PWM合成测试 -- 相电压
             float va_f = ol_status.last_duty.upper.ta * ol_status.hvdc_v - ol_status.last_duty.lower.ta * ol_status.lvdc_v;
             float vb_f = ol_status.last_duty.upper.tb * ol_status.hvdc_v - ol_status.last_duty.lower.tb * ol_status.lvdc_v;
             float vc_f = ol_status.last_duty.upper.tc * ol_status.hvdc_v - ol_status.last_duty.lower.tc * ol_status.lvdc_v;
@@ -145,8 +145,14 @@ static void ns800_svm_open_loop_print_entry(void *parameter)
             va = (va_f - vcm) * 1000;
             vb = (vb_f - vcm) * 1000;
             vc = (vc_f - vcm) * 1000;
-
-            rt_kprintf("%d,%d,%d\r\n", va, vb, vc);
+            
+            // rt_kprintf("%d,%d,%d\r\n", va, vb, vc);
+            
+            // 线电压打印效果
+            int vab = (va_f - vb_f) * 1000;
+            int vbc = (vb_f - vc_f) * 1000;
+            int vca = (vc_f - va_f) * 1000;
+            rt_kprintf("%d,%d,%d\r\n", vab, vbc, vca);
         }
         rt_thread_mdelay(1);
     }
