@@ -10,7 +10,7 @@
 #include <rtthread.h>
 
 #define NS800_LED1_THREAD_STACK  512U
-#define NS800_LED1_THREAD_PRIO   3U
+#define NS800_LED1_THREAD_PRIO   11U
 #define NS800_LED1_THREAD_TICK   20U
 
 static rt_thread_t led1_thread = RT_NULL;
@@ -50,10 +50,12 @@ int ns800_led_app_start(void)
     return 0;
 }
 
+// #include "ns800_adc_background.h"
 void ns800_led_app_loop(void)
 {
     while (1)
     {
+        // ns800_adc_background_dump();
         GPIO_togglePin(BOARD_LED2_PIN);
         rt_thread_mdelay(1000);
     }

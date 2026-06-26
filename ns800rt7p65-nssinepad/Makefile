@@ -6,7 +6,12 @@ JLINK_IF ?= SWD
 JLINK_SPEED ?= 4000
 JLINK_SCRIPT := flash.jlink
 
+SCONS ?= $(shell [ -x /Volumes/1TBWDBlue/Embedded_Dev.venv/bin/scons ] && printf "/Volumes/1TBWDBlue/Embedded_Dev.venv/bin/scons" || printf "scons")
+
 .PHONY: flash flash-jlink
+
+all:
+	$(SCONS) -j4
 
 flash: flash-jlink
 

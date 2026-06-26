@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include <board.h>
+#include <rthw.h>
 
 #include "adc.h"
 #include "dmamux.h"
@@ -17,11 +18,15 @@
 #include "gpio.h"
 #include "syscon.h"
 
+#ifdef RT_USING_FINSH
+#include "finsh.h"
+#endif
+
 #define NS800_ADC_BG_DMA_CHANNEL   1U
 #define NS800_ADC_BG_CACHE_BYTES   32U
 #define NS800_ADC_BG_SAMPLE_WIN    8U
-#define NS800_ADC_BG_EPWM_PERIOD   155U
-#define NS800_ADC_BG_EPWM_COMPARE  78U
+#define NS800_ADC_BG_EPWM_PERIOD   31U
+#define NS800_ADC_BG_EPWM_COMPARE  16U
 
 struct ns800_adc_bg_pin
 {
@@ -80,6 +85,7 @@ static void ns800_adc_bg_adc_init(void)
     ADC_setPrescaler(ADCA, ADC_CLK_DIV_4);
     ADC_setInterruptPulsePosMode(ADCA, ADC_PULSE_END_OF_CONV);
     ADC_enableConverter(ADCA);
+    rt_hw_us_delay(1000);
 
     ADC_disableBurstMode(ADCA);
     ADC_setSOCPriority(ADCA, ADC_PRI_ALL_ROUND_ROBIN);
@@ -157,8 +163,6 @@ static void ns800_adc_bg_dma_config(void)
                        (int32_t)NS800_ADC_BACKGROUND_FRAME_COUNT *
                        (int32_t)sizeof(rt_uint16_t));
     transfer.enMajorInt = false;
-    transfer.enDreq = false;
-    transfer.enTrigger = true;
     transfer.enErrInt = true;
     transfer.startMode = true;
 
@@ -289,3 +293,23 @@ const rt_uint16_t *ns800_adc_background_latest(rt_uint32_t *seq)
 
     return adc_bg_frames[latest];
 }
+
+int ns800_adc_background_dump(void)
+{
+    rt_uint32_t ch;
+    rt_uint32_t seq;
+    const rt_uint16_t *frame = ns800_adc_background_latest(&seq);
+
+    rt_kprintf("adc_bg seq=%u:", (unsigned int)seq);
+    for (ch = 0U; ch < NS800_ADC_BACKGROUND_CHANNELS; ch++)
+    {
+        rt_kprintf(" ch%u=%u", (unsigned int)ch, (unsigned int)(frame[ch] & 0x0fffU));
+    }
+    rt_kprintf("\r\n");
+
+    return 0;
+}
+
+#ifdef RT_USING_FINSH
+MSH_CMD_EXPORT_ALIAS(ns800_adc_background_dump, adc_bg_dump, dump latest ns800 adc background frame);
+#endif

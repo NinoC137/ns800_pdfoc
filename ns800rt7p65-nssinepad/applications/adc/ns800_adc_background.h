@@ -19,6 +19,7 @@ extern "C" {
 int ns800_adc_background_start(void);
 int ns800_adc_background_stop(void);
 const rt_uint16_t *ns800_adc_background_latest(rt_uint32_t *seq);
+int ns800_adc_background_dump(void);
 
 #ifdef __cplusplus
 }

@@ -15,13 +15,11 @@
 
 #include <rtthread.h>
 
-#include "interrupt.h"
-
 #define NS800_ADC_BG_THREAD_STACK  1024U
-#define NS800_ADC_BG_THREAD_PRIO   4U
+#define NS800_ADC_BG_THREAD_PRIO   3U
 #define NS800_ADC_BG_THREAD_TICK   20U
 #define NS800_POWER_CTRL_STACK     1024U
-#define NS800_POWER_CTRL_PRIO      3U
+#define NS800_POWER_CTRL_PRIO      4U
 #define NS800_POWER_CTRL_TICK      10U
 
 static rt_thread_t adc_bg_thread = RT_NULL;
@@ -100,15 +98,13 @@ int ns800_app_main(void)
 {
     rt_kprintf("NS800RT7P65 application start\r\n");
 
-    Interrupt_initModule();
-    Interrupt_initVectorTable();
-
-    ns800_led_app_start();
-    ns800_button_app_start();
+    // ns800_button_app_start();
     ns800_display_app_start();
     ns800_pwm_app_start();
     ns800_adc_bg_thread_start();
     ns800_power_ctrl_thread_start();
+    
+    ns800_led_app_start();
     ns800_led_app_loop();
 
     return 0;

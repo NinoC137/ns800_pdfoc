@@ -15,7 +15,7 @@
 
 #define NS800_BUTTON_COUNT          7U
 #define NS800_BUTTON_THREAD_STACK   1024U
-#define NS800_BUTTON_THREAD_PRIO    5U
+#define NS800_BUTTON_THREAD_PRIO    11U
 #define NS800_BUTTON_THREAD_TICK    10U
 #define NS800_BUTTON_SCAN_MS        5U
 #define NS800_XI_STEP               (0.05f)

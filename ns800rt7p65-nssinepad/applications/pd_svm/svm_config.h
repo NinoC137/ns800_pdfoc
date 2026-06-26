@@ -26,10 +26,10 @@ extern "C" {
 #define SVM_DEFAULT_VOLTAGE_CROSS_GAIN (50.0f * SVM_PI * 15.0e-6f)
 #define SVM_DEFAULT_CURRENT_CROSS_GAIN (50.0f * SVM_PI * 1.0e-2f)
 
-#define SVM_DEFAULT_UD_REF             (110.0f)
+#define SVM_DEFAULT_UD_REF             (12.0f)
 #define SVM_DEFAULT_UQ_REF             (0.0f)
 
-#define SVM_MIN_DC_VOLTAGE             (1.0f)
+#define SVM_MIN_DC_VOLTAGE             (0.0f)
 #define SVM_DEFAULT_FREQ_HZ            (50.0f)
 #define SVM_LUT_QUARTER_SIZE           (64u)
 

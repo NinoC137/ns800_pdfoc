@@ -53,5 +53,27 @@ void svm_port_write_pwm_compare(const svm_dual_out_t *duty)
 
 void svm_port_report_fault(uint32_t fault_flags)
 {
-    rt_kprintf("svm fault: 0x%08x\r\n", (unsigned int)fault_flags);
+    static rt_uint32_t fault_print_divider = 0U;
+    const rt_uint16_t *frame;
+    rt_uint32_t seq;
+    rt_uint32_t ch;
+
+    frame = ns800_adc_background_latest(&seq);
+    rt_kprintf("svm fault: 0x%08x adc_seq=%u",
+               (unsigned int)fault_flags,
+               (unsigned int)seq);
+
+    if (frame == RT_NULL)
+    {
+        rt_kprintf(" adc=null\r\n");
+        return;
+    }
+
+    for (ch = 0U; ch < NS800_ADC_BACKGROUND_CHANNELS; ch++)
+    {
+        rt_kprintf(" ch%u=%u",
+                   (unsigned int)ch,
+                   (unsigned int)(frame[ch] & 0x0fffU));
+    }
+    rt_kprintf("\r\n");
 }
