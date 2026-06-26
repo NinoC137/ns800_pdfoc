@@ -29,7 +29,7 @@
 #define NS800_SVM_OL_DEFAULT_LVDC       (24.0f)
 #define NS800_SVM_OL_DEFAULT_XI         (0.63f)
 #define NS800_SVM_OL_DEFAULT_VPEAK      (12.0f)
-#define NS800_SVM_OL_DEFAULT_FREQ       (50.0f)
+#define NS800_SVM_OL_DEFAULT_FREQ       (5.0f)
 #define NS800_SVM_OL_PRINT_STACK        1024U
 #define NS800_SVM_OL_PRINT_PRIO         20U
 #define NS800_SVM_OL_PRINT_TICK         10U
@@ -128,16 +128,23 @@ static void ns800_svm_open_loop_print_entry(void *parameter)
     {
         if (ol_running == RT_TRUE)
         {
+            //测试代码：python3 ../tools/waveview/nswaveview.py --port /dev/cu.usbmodem0007752380361 --baud 115200 --channels 3
+
+            //开环SVM参考矢量测试
             // va = ol_float_to_i32(ol_status.last_ac_voltage_abc.a * NS800_SVM_OL_PRINT_SCALE);
             // vb = ol_float_to_i32(ol_status.last_ac_voltage_abc.b * NS800_SVM_OL_PRINT_SCALE);
             // vc = ol_float_to_i32(ol_status.last_ac_voltage_abc.c * NS800_SVM_OL_PRINT_SCALE);
 
-            va = ol_float_to_i32((ol_status.last_duty.upper.ta * ol_status.hvdc_v -
-                      ol_status.last_duty.lower.ta * ol_status.lvdc_v) * NS800_SVM_OL_PRINT_SCALE);
-            vb = ol_float_to_i32((ol_status.last_duty.upper.tb * ol_status.hvdc_v -
-                                ol_status.last_duty.lower.tb * ol_status.lvdc_v) * NS800_SVM_OL_PRINT_SCALE);
-            vc = ol_float_to_i32((ol_status.last_duty.upper.tc * ol_status.hvdc_v -
-                                ol_status.last_duty.lower.tc * ol_status.lvdc_v) * NS800_SVM_OL_PRINT_SCALE);
+            //开环PWM合成测试
+            float va_f = ol_status.last_duty.upper.ta * ol_status.hvdc_v - ol_status.last_duty.lower.ta * ol_status.lvdc_v;
+            float vb_f = ol_status.last_duty.upper.tb * ol_status.hvdc_v - ol_status.last_duty.lower.tb * ol_status.lvdc_v;
+            float vc_f = ol_status.last_duty.upper.tc * ol_status.hvdc_v - ol_status.last_duty.lower.tc * ol_status.lvdc_v;
+
+            float vcm = (va_f + vb_f + vc_f) / 3.0f;
+
+            va = (va_f - vcm) * 1000;
+            vb = (vb_f - vcm) * 1000;
+            vc = (vc_f - vcm) * 1000;
 
             rt_kprintf("%d,%d,%d\r\n", va, vb, vc);
         }
