@@ -1,0 +1,7 @@
+ExitOnError 1
+r
+halt
+loadfile rtthread.elf
+r
+g
+qc

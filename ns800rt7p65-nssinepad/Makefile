@@ -1,0 +1,16 @@
+PROJECT := rtthread
+BUILD_DIR := .
+JLINK_EXE ?= JLinkExe
+JLINK_DEVICE ?= NS800RT7P65
+JLINK_IF ?= SWD
+JLINK_SPEED ?= 4000
+JLINK_SCRIPT := flash.jlink
+
+.PHONY: flash flash-jlink
+
+flash: flash-jlink
+
+flash-jlink: $(PROJECT).elf
+	# J-Link 烧录：使用 J-Link Commander 下载 ELF 到目标板并复位运行。
+	@printf "ExitOnError 1\nr\nhalt\nloadfile %s\nr\ng\nqc\n" "$<" > $(JLINK_SCRIPT)
+	$(JLINK_EXE) -device $(JLINK_DEVICE) -if $(JLINK_IF) -speed $(JLINK_SPEED) -CommanderScript $(JLINK_SCRIPT)
