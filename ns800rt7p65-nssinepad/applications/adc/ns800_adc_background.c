@@ -6,8 +6,6 @@
 
 #include "ns800_adc_background.h"
 
-#ifdef BSP_USING_ADC
-
 #include <stdint.h>
 
 #include <board.h>
@@ -291,23 +289,3 @@ const rt_uint16_t *ns800_adc_background_latest(rt_uint32_t *seq)
 
     return adc_bg_frames[latest];
 }
-
-#else
-
-int ns800_adc_background_start(void)
-{
-    return -RT_ENOSYS;
-}
-
-int ns800_adc_background_stop(void)
-{
-    return -RT_ENOSYS;
-}
-
-const rt_uint16_t *ns800_adc_background_latest(rt_uint32_t *seq)
-{
-    RT_UNUSED(seq);
-    return RT_NULL;
-}
-
-#endif /* BSP_USING_ADC */

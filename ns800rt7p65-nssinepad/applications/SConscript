@@ -2,8 +2,17 @@ from building import *
 import os
 
 cwd = GetCurrentDir()
-src = Glob('*.c')
-CPPPATH = [cwd]
+
+src = []
+CPPPATH = []
+for root, dirs, files in os.walk(cwd):
+    if 'build' in dirs:
+        dirs.remove('build')
+    c_files = [os.path.join(root, item) for item in files if item.endswith('.c')]
+    if c_files:
+        src += c_files
+    if any(item.endswith(('.h', '.c')) for item in files):
+        CPPPATH.append(root)
 
 group = DefineGroup('Applications', src, depend = [''], CPPPATH = CPPPATH)
 
