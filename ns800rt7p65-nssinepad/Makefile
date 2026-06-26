@@ -6,7 +6,21 @@ JLINK_IF ?= SWD
 JLINK_SPEED ?= 4000
 JLINK_SCRIPT := flash.jlink
 
-SCONS ?= $(shell [ -x /Volumes/1TBWDBlue/Embedded_Dev.venv/bin/scons ] && printf "/Volumes/1TBWDBlue/Embedded_Dev.venv/bin/scons" || printf "scons")
+VENV := /Volumes/1TBWDBlue/Embedded_Dev/.venv
+
+SCONS ?= $(shell [ -x $(VENV)/bin/scons ] && printf "$(VENV)/bin/scons" || printf "scons")
+PYTHON ?= $(shell [ -x $(VENV)/bin/python3 ] && printf "$(VENV)/bin/python3" || printf "python3")
+
+NSWAVEVIEW := ../tools/waveview/nswaveview.py
+PORT ?= /dev/cu.usbmodem*
+BAUD ?= 115200
+CHANNELS ?= 3
+
+wave:
+	$(PYTHON) $(NSWAVEVIEW) \
+		--port $(PORT) \
+		--baud $(BAUD) \
+		--channels $(CHANNELS)
 
 .PHONY: flash flash-jlink
 
