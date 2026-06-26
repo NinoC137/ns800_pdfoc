@@ -13,9 +13,9 @@
 #include "gpio.h"
 #include "multi_button.h"
 
-#define NS800_BUTTON_COUNT          7U
+#define NS800_BUTTON_COUNT          8U
 #define NS800_BUTTON_THREAD_STACK   1024U
-#define NS800_BUTTON_THREAD_PRIO    11U
+#define NS800_BUTTON_THREAD_PRIO    4U
 #define NS800_BUTTON_THREAD_TICK    10U
 #define NS800_BUTTON_SCAN_MS        5U
 #define NS800_XI_STEP               (0.05f)
@@ -35,6 +35,7 @@ typedef enum
     NS800_BTN_FORCE_INC,
     NS800_BTN_FORCE_DEC,
     NS800_BTN_RESET,
+    NS800_BTN_IO12_13_TOGGLE,
 } ns800_button_id_t;
 
 struct ns800_button_pin
@@ -52,10 +53,49 @@ static const struct ns800_button_pin button_pins[NS800_BUTTON_COUNT] =
     {GPIOA, GPIO_PIN_16},
     {GPIOA, GPIO_PIN_17},
     {GPIOA, GPIO_PIN_18},
+    {GPIOB, GPIO_PIN_9},
 };
 
 static Button buttons[NS800_BUTTON_COUNT];
 static rt_thread_t button_thread = RT_NULL;
+static rt_bool_t io12_13_uart_mode = RT_TRUE;
+
+static void ns800_io12_13_to_uart(void)
+{
+    GPIO_setPinConfig(GPIO_12_SCIA_TX);
+    GPIO_setPinConfig(GPIO_13_SCIA_RX);
+
+    GPIO_setAnalogMode(GPIO_12, GPIO_ANALOG_DISABLED);
+    GPIO_setPadConfig(GPIO_12, GPIO_PIN_TYPE_STD);
+    GPIO_setDriveLevel(GPIO_12, GPIO_DRV_LOW);
+    GPIO_setPin(GPIO_12);
+    GPIO_setDirectionMode(GPIO_12, GPIO_DIR_MODE_OUT);
+
+    GPIO_setAnalogMode(GPIO_13, GPIO_ANALOG_DISABLED);
+    GPIO_setPadConfig(GPIO_13, GPIO_PIN_TYPE_PULLUP);
+    GPIO_setQualificationMode(GPIO_13, GPIO_QUAL_SYNC);
+    GPIO_setDirectionMode(GPIO_13, GPIO_DIR_MODE_IN);
+
+    io12_13_uart_mode = RT_TRUE;
+}
+
+static void ns800_io12_13_to_buttons(void)
+{
+    GPIO_setPinConfig(GPIOA, GPIO_PIN_12, ALT0_FUNCTION);
+    GPIO_setPinConfig(GPIOA, GPIO_PIN_13, ALT0_FUNCTION);
+
+    GPIO_setAnalogMode(GPIO_12, GPIO_ANALOG_DISABLED);
+    GPIO_setPadConfig(GPIO_12, GPIO_PIN_TYPE_PULLUP);
+    GPIO_setQualificationMode(GPIO_12, GPIO_QUAL_SYNC);
+    GPIO_setDirectionMode(GPIO_12, GPIO_DIR_MODE_IN);
+
+    GPIO_setAnalogMode(GPIO_13, GPIO_ANALOG_DISABLED);
+    GPIO_setPadConfig(GPIO_13, GPIO_PIN_TYPE_PULLUP);
+    GPIO_setQualificationMode(GPIO_13, GPIO_QUAL_SYNC);
+    GPIO_setDirectionMode(GPIO_13, GPIO_DIR_MODE_IN);
+
+    io12_13_uart_mode = RT_FALSE;
+}
 
 void ns800_button_app_reset_params(void)
 {
@@ -76,6 +116,11 @@ static void ns800_button_gpio_init(void)
 
     for (i = 0U; i < NS800_BUTTON_COUNT; i++)
     {
+        if ((i == NS800_BTN_XI_INC) || (i == NS800_BTN_XI_DEC))
+        {
+            continue;
+        }
+
         GPIO_setPinConfig(button_pins[i].port, button_pins[i].pin, ALT0_FUNCTION);
         GPIO_setAnalogMode(button_pins[i].port, button_pins[i].pin, GPIO_ANALOG_DISABLED);
         GPIO_setPadConfig(button_pins[i].port, button_pins[i].pin, GPIO_PIN_TYPE_PULLUP);
@@ -90,13 +135,22 @@ static void ns800_button_click(Button *handle, void *user_data)
 
     RT_UNUSED(handle);
 
+    // if (((id == NS800_BTN_XI_INC) || (id == NS800_BTN_XI_DEC)) && (io12_13_uart_mode == RT_TRUE))
+    // {
+    //     return;
+    // }
+
     switch (id)
     {
     case NS800_BTN_XI_INC:
-        ns800_param_xi += NS800_XI_STEP;
+        if(io12_13_uart_mode == RT_FALSE) {
+            ns800_param_xi += NS800_XI_STEP;
+        }
         break;
     case NS800_BTN_XI_DEC:
-        ns800_param_xi -= NS800_XI_STEP;
+        if(io12_13_uart_mode == RT_FALSE) {
+            ns800_param_xi -= NS800_XI_STEP;
+        }
         break;
     case NS800_BTN_SPEED_INC:
         ns800_param_speed += NS800_SPEED_STEP;
@@ -113,6 +167,18 @@ static void ns800_button_click(Button *handle, void *user_data)
     case NS800_BTN_RESET:
         ns800_button_app_reset_params();
         break;
+    case NS800_BTN_IO12_13_TOGGLE:
+        if (io12_13_uart_mode == RT_TRUE)
+        {
+            rt_kprintf("change to button mode\r\n");
+            ns800_io12_13_to_buttons();
+        }
+        else
+        {
+            ns800_io12_13_to_uart();
+            rt_kprintf("change to uart mode\r\n");
+        }
+        break;
     default:
         break;
     }
@@ -123,6 +189,7 @@ static void ns800_button_init_all(void)
     rt_uint32_t i;
 
     ns800_button_gpio_init();
+    ns800_io12_13_to_uart();
     for (i = 0U; i < NS800_BUTTON_COUNT; i++)
     {
         button_init(&buttons[i], ns800_button_read_level, 0U, (uint8_t)i);

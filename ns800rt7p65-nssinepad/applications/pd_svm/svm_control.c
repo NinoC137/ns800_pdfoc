@@ -122,7 +122,7 @@ svm_status_t svm_control_isr_step(svm_control_state_t *state,
     svm_port_exit_critical();
 
     if (status != SVM_STATUS_OK) {
-        svm_port_report_fault((uint32_t)status);
+        // svm_port_report_fault((uint32_t)status);
     }
     return status;
 }

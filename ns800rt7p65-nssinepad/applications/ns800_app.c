@@ -98,7 +98,7 @@ int ns800_app_main(void)
 {
     rt_kprintf("NS800RT7P65 application start\r\n");
 
-    // ns800_button_app_start();
+    ns800_button_app_start();
     ns800_display_app_start();
     ns800_pwm_app_start();
     ns800_adc_bg_thread_start();
