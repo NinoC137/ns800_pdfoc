@@ -25,6 +25,7 @@
 volatile float ns800_param_xi = 0.5f;
 volatile rt_int32_t ns800_param_speed = 2000;
 volatile rt_int32_t ns800_param_force_ma = 500;
+static volatile rt_uint32_t button_reset_count = 0U;
 
 typedef enum
 {
@@ -102,6 +103,12 @@ void ns800_button_app_reset_params(void)
     ns800_param_xi = 0.5f;
     ns800_param_speed = 2000;
     ns800_param_force_ma = 500;
+    button_reset_count++;
+}
+
+rt_uint32_t ns800_button_app_reset_count(void)
+{
+    return button_reset_count;
 }
 
 static uint8_t ns800_button_read_level(uint8_t button_id)

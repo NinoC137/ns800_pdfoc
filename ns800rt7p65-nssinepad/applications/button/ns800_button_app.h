@@ -19,6 +19,7 @@ extern volatile rt_int32_t ns800_param_force_ma;
 
 int ns800_button_app_start(void);
 void ns800_button_app_reset_params(void);
+rt_uint32_t ns800_button_app_reset_count(void);
 
 #ifdef __cplusplus
 }
