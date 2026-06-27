@@ -31,11 +31,6 @@ extern "C" {
 
 #define SVM_MIN_DC_VOLTAGE             (0.0f)
 #define SVM_DEFAULT_FREQ_HZ            (50.0f)
-#define SVM_LUT_QUARTER_SIZE           (64u)
-
-#ifndef SVM_USE_NS800_MMATH
-#define SVM_USE_NS800_MMATH            (0)
-#endif
 
 #ifdef __cplusplus
 }

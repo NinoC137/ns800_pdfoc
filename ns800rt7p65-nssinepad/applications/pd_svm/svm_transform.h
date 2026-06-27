@@ -26,7 +26,7 @@ void svm_nco_init(svm_nco_t *nco, float freq_hz, float sample_time_s);
 void svm_nco_set_frequency(svm_nco_t *nco, float freq_hz, float sample_time_s);
 void svm_nco_set_angle(svm_nco_t *nco, float angle_rad);
 void svm_nco_step(svm_nco_t *nco);
-void svm_lut_sincos(float angle_rad, svm_sincos_f32_t *sc);
+void svm_sincos(float angle_rad, svm_sincos_f32_t *sc);
 
 #ifdef __cplusplus
 }

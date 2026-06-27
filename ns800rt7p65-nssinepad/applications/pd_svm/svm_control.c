@@ -63,7 +63,7 @@ svm_status_t svm_control_step(svm_control_state_t *state,
         cfg = &default_cfg;
     }
 
-    svm_lut_sincos(state->nco.angle_rad, &sc);
+    svm_sincos(state->nco.angle_rad, &sc);
     svm_clarke(ac_voltage_abc, &out->voltage_ab);
     svm_clarke(ac_current_abc, &out->current_ab);
     svm_park(&out->voltage_ab, &sc, &out->voltage_dq);
