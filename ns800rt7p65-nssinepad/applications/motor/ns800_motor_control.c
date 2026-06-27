@@ -21,11 +21,25 @@
 #define NS800_MOTOR_DEFAULT_MAX_VOLTAGE_V         (12.0f)
 #define NS800_MOTOR_RPM_TO_RAD_S                  (0.1047197551f)
 
+/**
+ * @brief 计算 float 绝对值，避免在 ISR 控制路径中引入额外数学库依赖。
+ *
+ * @param value 输入值。
+ * @return 输入值的非负绝对值。
+ */
 static float motor_abs(float value)
 {
     return (value < 0.0f) ? -value : value;
 }
 
+/**
+ * @brief 将输入值裁剪到闭区间。
+ *
+ * @param value 输入值。
+ * @param min_value 下限。
+ * @param max_value 上限。
+ * @return 裁剪后的值。
+ */
 static float motor_clamp(float value, float min_value, float max_value)
 {
     if (value > max_value)
@@ -39,11 +53,26 @@ static float motor_clamp(float value, float min_value, float max_value)
     return value;
 }
 
+/**
+ * @brief 将限幅参数规整为非负值。
+ *
+ * @param value 原始限幅值。
+ * @return 非负限幅值。
+ */
 static float motor_positive_limit(float value)
 {
     return (value < 0.0f) ? -value : value;
 }
 
+/**
+ * @brief 生成带输出限幅、积分限幅和抗饱和的 PI 配置。
+ *
+ * @param kp 比例系数。
+ * @param ki 积分系数。
+ * @param sample_time_s 控制周期，单位 s。
+ * @param limit 对称输出/积分限幅。
+ * @return PI 配置。
+ */
 static svm_pi_config_t motor_make_pi(float kp, float ki, float sample_time_s, float limit)
 {
     svm_pi_config_t pi;
@@ -63,6 +92,12 @@ static svm_pi_config_t motor_make_pi(float kp, float ki, float sample_time_s, fl
     return pi;
 }
 
+/**
+ * @brief 检查电机参数是否足以执行 FOC 计算。
+ *
+ * @param params 电机参数。
+ * @return true 参数有效；false 参数非法。
+ */
 static bool motor_params_valid(const ns800_motor_params_t *params)
 {
     if (params == 0)
@@ -85,6 +120,13 @@ static bool motor_params_valid(const ns800_motor_params_t *params)
     return true;
 }
 
+/**
+ * @brief 将 SVM 状态位映射到电机控制状态位。
+ *
+ * @param status 已累计的电机状态位。
+ * @param svm_status 本拍 SVM 返回状态。
+ * @return 合并后的电机状态位。
+ */
 static uint32_t motor_status_from_svm(uint32_t status, svm_status_t svm_status)
 {
     if (((uint8_t)svm_status & (uint8_t)SVM_STATUS_LOW_DC_VOLTAGE) != 0u)
@@ -107,6 +149,11 @@ static uint32_t motor_status_from_svm(uint32_t status, svm_status_t svm_status)
     return status;
 }
 
+/**
+ * @brief 清零单拍输出结构。
+ *
+ * @param out 输出结构指针；为空时直接返回。
+ */
 static void motor_clear_output(ns800_motor_output_t *out)
 {
     if (out == 0)
@@ -148,16 +195,37 @@ static void motor_clear_output(ns800_motor_output_t *out)
     out->status = (uint32_t)NS800_MOTOR_STATUS_OK;
 }
 
+/**
+ * @brief 将 q 轴电流转换为电磁转矩。
+ *
+ * @param params 电机参数。
+ * @param iq_a q 轴电流，单位 A。
+ * @return 转矩，单位 Nm。
+ */
 static float motor_iq_to_torque(const ns800_motor_params_t *params, float iq_a)
 {
     return params->torque_constant_nm_a * iq_a;
 }
 
+/**
+ * @brief 将转矩参考转换为 q 轴电流参考。
+ *
+ * @param params 电机参数。
+ * @param torque_nm 转矩参考，单位 Nm。
+ * @return q 轴电流参考，单位 A。
+ */
 static float motor_torque_to_iq(const ns800_motor_params_t *params, float torque_nm)
 {
     return torque_nm / params->torque_constant_nm_a;
 }
 
+/**
+ * @brief 填充默认电机参数。
+ *
+ * 默认值仅用于 bring-up 和软件链路验证，实际闭环前应根据电机实测参数更新。
+ *
+ * @param params 输出参数指针。
+ */
 void ns800_motor_default_params(ns800_motor_params_t *params)
 {
     if (params == 0)
@@ -173,6 +241,13 @@ void ns800_motor_default_params(ns800_motor_params_t *params)
     params->encoder_offset_rad = 0.0f;
 }
 
+/**
+ * @brief 填充默认电机控制配置。
+ *
+ * 默认上电开环输出为 12 V peak、50 Hz，双端口母线电压固定为 48 V/24 V。
+ *
+ * @param cfg 输出配置指针。
+ */
 void ns800_motor_default_config(ns800_motor_config_t *cfg)
 {
     if (cfg == 0)
@@ -207,6 +282,14 @@ void ns800_motor_default_config(ns800_motor_config_t *cfg)
     cfg->svm.min_dc_voltage = 1.0f;
 }
 
+/**
+ * @brief 初始化电机控制状态。
+ *
+ * 初始化开环 NCO，并清零速度环和电流环 PI 状态。
+ *
+ * @param state 控制状态。
+ * @param cfg 控制配置；为空时使用默认配置。
+ */
 void ns800_motor_init(ns800_motor_state_t *state, const ns800_motor_config_t *cfg)
 {
     ns800_motor_config_t default_cfg;
@@ -225,6 +308,11 @@ void ns800_motor_init(ns800_motor_state_t *state, const ns800_motor_config_t *cf
     ns800_motor_reset(state);
 }
 
+/**
+ * @brief 清零速度环和电流环 PI 状态。
+ *
+ * @param state 控制状态。
+ */
 void ns800_motor_reset(ns800_motor_state_t *state)
 {
     if (state == 0)
@@ -237,6 +325,12 @@ void ns800_motor_reset(ns800_motor_state_t *state)
     svm_pi_init_state(&state->speed);
 }
 
+/**
+ * @brief 将角度折返到 [0, 2*pi)。
+ *
+ * @param angle_rad 输入角度，单位 rad。
+ * @return 折返后的角度。
+ */
 float ns800_motor_wrap_angle_0_2pi(float angle_rad)
 {
     while (angle_rad >= NS800_MOTOR_TWO_PI)
@@ -250,6 +344,13 @@ float ns800_motor_wrap_angle_0_2pi(float angle_rad)
     return angle_rad;
 }
 
+/**
+ * @brief 由机械角计算电角度。
+ *
+ * @param params 电机参数。
+ * @param theta_m_rad 机械角，单位 rad。
+ * @return 电角度，单位 rad。
+ */
 float ns800_motor_mech_to_elec_angle(const ns800_motor_params_t *params, float theta_m_rad)
 {
     if ((params == 0) || (params->pole_pairs == 0u))
@@ -261,6 +362,21 @@ float ns800_motor_mech_to_elec_angle(const ns800_motor_params_t *params, float t
                                         params->encoder_offset_rad);
 }
 
+/**
+ * @brief 执行一拍功率分配无刷电机控制。
+ *
+ * - STOP：保持输出清零。
+ * - OPEN_LOOP：用 NCO 生成旋转电压矢量，直接进入双端口 SVM。
+ * - TORQUE/SPEED：需要 ADC 电流和转子反馈，执行 Clarke/Park、速度 PI、
+ *   电流 PI、逆 Park 与双端口 SVM。
+ *
+ * @param state 控制状态，会被本函数更新。
+ * @param cfg 控制配置；为空时使用默认配置。
+ * @param params 电机参数；为空时使用默认参数。
+ * @param in 单拍输入。
+ * @param out 单拍输出。
+ * @return 状态位图。
+ */
 ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
                                       const ns800_motor_config_t *cfg,
                                       const ns800_motor_params_t *params,

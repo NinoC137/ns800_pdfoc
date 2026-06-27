@@ -37,6 +37,16 @@ static volatile ns800_motor_mode_t motor_mode = NS800_MOTOR_MODE_OPEN_LOOP;
 static rt_uint32_t motor_last_adc_seq = 0U;
 static rt_uint32_t motor_last_reset_count = 0U;
 
+/**
+ * @brief 获取转子机械角和机械角速度的默认弱实现。
+ *
+ * 当前项目还没有接入编码器/霍尔反馈，因此默认返回无效。后续新增真实反馈时，
+ * 在应用层提供同名非 weak 函数即可覆盖该实现。
+ *
+ * @param theta_m_rad 输出机械角，单位 rad。
+ * @param omega_m_rad_s 输出机械角速度，单位 rad/s。
+ * @return RT_FALSE 表示反馈无效。
+ */
 rt_bool_t __attribute__((weak)) ns800_motor_feedback_get(float *theta_m_rad, float *omega_m_rad_s)
 {
     if (theta_m_rad != RT_NULL)
@@ -51,11 +61,25 @@ rt_bool_t __attribute__((weak)) ns800_motor_feedback_get(float *theta_m_rad, flo
     return RT_FALSE;
 }
 
+/**
+ * @brief 计算 float 绝对值。
+ *
+ * @param value 输入值。
+ * @return 非负绝对值。
+ */
 static float motor_abs(float value)
 {
     return (value < 0.0f) ? -value : value;
 }
 
+/**
+ * @brief 将输入值裁剪到闭区间。
+ *
+ * @param value 输入值。
+ * @param min_value 下限。
+ * @param max_value 上限。
+ * @return 裁剪后的值。
+ */
 static float motor_clamp(float value, float min_value, float max_value)
 {
     if (value > max_value)
@@ -70,12 +94,25 @@ static float motor_clamp(float value, float min_value, float max_value)
     return value;
 }
 
+/**
+ * @brief 将 ADC 原始值转换为相电流。
+ *
+ * 当前为占位标定：2048 作为零点，1 count = 1 mA。后续应按硬件采样比例更新。
+ *
+ * @param raw ADC 原始采样值。
+ * @return 相电流，单位 A。
+ */
 static float motor_adc_current(rt_uint16_t raw)
 {
     return (((float)(raw & 0x0fffU)) - NS800_MOTOR_ADC_CURRENT_ZERO) *
            NS800_MOTOR_ADC_CURRENT_GAIN_A_COUNT;
 }
 
+/**
+ * @brief 初始化 EPWM2 为 10 kHz 电机控制定时中断。
+ *
+ * EPWM2 只作为控制节拍，不输出 PWM；功率 PWM 仍由 EPWM8~13 负责。
+ */
 static void ns800_motor_epwm_init(void)
 {
     EPWM_setClockPrescaler(NS800_MOTOR_EPWM_BASE, EPWM_CLOCK_DIVIDER_1, EPWM_HSCLOCK_DIVIDER_1);
@@ -91,6 +128,14 @@ static void ns800_motor_epwm_init(void)
     EPWM_enableInterrupt(NS800_MOTOR_EPWM_BASE);
 }
 
+/**
+ * @brief 组装一拍电机控制输入。
+ *
+ * 该函数运行在 EPWM2 ISR 路径中，只做无阻塞数据读取和简单换算：
+ * ADC CH5/7/9 映射为 A/B/C 三相电流，按键全局变量映射为 xi、speed、Iq 限幅。
+ *
+ * @param in 输出控制输入结构。
+ */
 static void ns800_motor_fill_input(ns800_motor_input_t *in)
 {
     const rt_uint16_t *frame;
@@ -147,6 +192,12 @@ static void ns800_motor_fill_input(ns800_motor_input_t *in)
     in->command.iq_ref_a = (float)ns800_param_force_ma * NS800_MOTOR_MA_TO_A;
 }
 
+/**
+ * @brief EPWM2 电机控制中断服务函数。
+ *
+ * 中断内完成采样锁存、控制计算和 PWM shadow compare 更新。此路径禁止 printf、
+ * 动态内存和任何可能阻塞的操作。
+ */
 void ns800_motor_isr(void)
 {
     ns800_motor_input_t in;
@@ -173,6 +224,13 @@ void ns800_motor_isr(void)
     __DSB();
 }
 
+/**
+ * @brief 启动电机应用层。
+ *
+ * 默认进入开环模式，便于先验证 EPWM8~13 和功率分配 SVM 输出链路。
+ *
+ * @return 0 表示成功。
+ */
 int ns800_motor_app_start(void)
 {
     rt_memset((void *)&motor_status, 0, sizeof(motor_status));
@@ -195,6 +253,11 @@ int ns800_motor_app_start(void)
     return 0;
 }
 
+/**
+ * @brief 停止电机应用层并关闭 PWM 输出。
+ *
+ * @return 0 表示成功。
+ */
 int ns800_motor_app_stop(void)
 {
     motor_running = RT_FALSE;
@@ -208,6 +271,14 @@ int ns800_motor_app_stop(void)
     return 0;
 }
 
+/**
+ * @brief 切换电机控制模式。
+ *
+ * 速度闭环依赖真实转子反馈；如果反馈接口无效，则拒绝切入 SPEED 模式。
+ *
+ * @param mode 目标模式。
+ * @return 0 表示切换成功；负值表示切换失败。
+ */
 int ns800_motor_app_set_mode(ns800_motor_mode_t mode)
 {
     float theta_m;
@@ -227,12 +298,20 @@ int ns800_motor_app_set_mode(ns800_motor_mode_t mode)
     return 0;
 }
 
+/**
+ * @brief 获取电机应用层状态。
+ *
+ * @return 状态结构只读指针。
+ */
 const ns800_motor_app_status_t *ns800_motor_app_get_status(void)
 {
     return &motor_status;
 }
 
 #ifdef RT_USING_FINSH
+/**
+ * @brief FinSH 命令：切换到开环电机测试模式。
+ */
 static int motor_ol_cmd(int argc, char **argv)
 {
     RT_UNUSED(argc);
@@ -243,6 +322,9 @@ static int motor_ol_cmd(int argc, char **argv)
     return 0;
 }
 
+/**
+ * @brief FinSH 命令：尝试切换到速度闭环模式。
+ */
 static int motor_speed_cmd(int argc, char **argv)
 {
     int result;
@@ -264,6 +346,9 @@ static int motor_speed_cmd(int argc, char **argv)
     return 0;
 }
 
+/**
+ * @brief FinSH 命令：切换到停止模式。
+ */
 static int motor_stop_cmd(int argc, char **argv)
 {
     RT_UNUSED(argc);
@@ -274,6 +359,9 @@ static int motor_stop_cmd(int argc, char **argv)
     return 0;
 }
 
+/**
+ * @brief FinSH 命令：打印最近一拍电机控制状态。
+ */
 static int motor_status_cmd(int argc, char **argv)
 {
     const ns800_motor_app_status_t *status = ns800_motor_app_get_status();

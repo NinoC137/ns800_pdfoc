@@ -61,6 +61,9 @@ static Button buttons[NS800_BUTTON_COUNT];
 static rt_thread_t button_thread = RT_NULL;
 static rt_bool_t io12_13_uart_mode = RT_TRUE;
 
+/**
+ * @brief 将 GPIO12/13 切回 SCIA 串口功能。
+ */
 static void ns800_io12_13_to_uart(void)
 {
     GPIO_setPinConfig(GPIO_12_SCIA_TX);
@@ -80,6 +83,9 @@ static void ns800_io12_13_to_uart(void)
     io12_13_uart_mode = RT_TRUE;
 }
 
+/**
+ * @brief 将 GPIO12/13 切换为普通按键输入。
+ */
 static void ns800_io12_13_to_buttons(void)
 {
     GPIO_setPinConfig(GPIOA, GPIO_PIN_12, ALT0_FUNCTION);
@@ -98,6 +104,11 @@ static void ns800_io12_13_to_buttons(void)
     io12_13_uart_mode = RT_FALSE;
 }
 
+/**
+ * @brief 恢复按键控制参数默认值。
+ *
+ * 同时递增 reset 事件计数，供电机控制 ISR 清零速度环和电流环 PI 状态。
+ */
 void ns800_button_app_reset_params(void)
 {
     ns800_param_xi = 0.5f;
@@ -106,17 +117,33 @@ void ns800_button_app_reset_params(void)
     button_reset_count++;
 }
 
+/**
+ * @brief 获取 reset 事件累计次数。
+ *
+ * @return reset 事件计数。
+ */
 rt_uint32_t ns800_button_app_reset_count(void)
 {
     return button_reset_count;
 }
 
+/**
+ * @brief 读取指定按键当前电平。
+ *
+ * @param button_id 按键编号。
+ * @return GPIO 电平，0 表示按下。
+ */
 static uint8_t ns800_button_read_level(uint8_t button_id)
 {
     const struct ns800_button_pin *pin = &button_pins[button_id];
     return (uint8_t)GPIO_readPin(pin->port, pin->pin);
 }
 
+/**
+ * @brief 初始化按键 GPIO。
+ *
+ * GPIO12/13 可被串口复用，因此由独立切换函数处理。
+ */
 static void ns800_button_gpio_init(void)
 {
     rt_uint32_t i;
@@ -136,6 +163,14 @@ static void ns800_button_gpio_init(void)
     }
 }
 
+/**
+ * @brief MultiButton 单击/长按回调。
+ *
+ * 根据按键编号调整 xi、speed、F 或触发 reset/串口复用切换。
+ *
+ * @param handle MultiButton 按键句柄。
+ * @param user_data 按键编号。
+ */
 static void ns800_button_click(Button *handle, void *user_data)
 {
     rt_uint32_t id = (rt_uint32_t)(uintptr_t)user_data;
@@ -191,6 +226,9 @@ static void ns800_button_click(Button *handle, void *user_data)
     }
 }
 
+/**
+ * @brief 初始化所有 MultiButton 对象。
+ */
 static void ns800_button_init_all(void)
 {
     rt_uint32_t i;
@@ -206,6 +244,13 @@ static void ns800_button_init_all(void)
     }
 }
 
+/**
+ * @brief 按键扫描线程入口。
+ *
+ * MultiButton 要求周期性调用 button_ticks()，当前心跳为 5 ms。
+ *
+ * @param parameter RT-Thread 线程参数，未使用。
+ */
 static void ns800_button_thread_entry(void *parameter)
 {
     RT_UNUSED(parameter);
@@ -218,6 +263,11 @@ static void ns800_button_thread_entry(void *parameter)
     }
 }
 
+/**
+ * @brief 启动按键扫描线程。
+ *
+ * @return 0 表示成功；负值表示线程创建失败。
+ */
 int ns800_button_app_start(void)
 {
     if (button_thread != RT_NULL)
