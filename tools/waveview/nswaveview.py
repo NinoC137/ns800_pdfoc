@@ -3,9 +3,13 @@
 """
 NS800 serial waveform viewer.
 
-MCU output format:
+MCU output formats:
     1,2,3,4\\r
     1,2,3,4\\r\\n
+    wave:1,2,3,4\\r\\n
+    svm:total,30,1000\\r\\n
+    svm:upper,45,800\\r\\n
+    svm:lower,15,700\\r\\n
 """
 
 from __future__ import annotations
@@ -23,7 +27,6 @@ import webbrowser
 from collections import deque
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Iterable
 from urllib.parse import parse_qs, urlparse
 
@@ -108,10 +111,44 @@ button:hover { border-color: var(--accent); }
   color: var(--muted);
 }
 .status strong { color: var(--text); font-weight: 600; }
+.workspace {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(0, 3fr);
+  gap: 10px;
+  padding: 10px 12px 0;
+}
+.vector-stack {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.vector-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: #0c0d11;
+  border: 1px solid #252a35;
+}
+.vector-title {
+  padding: 6px 8px 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.vector-readout {
+  min-height: 24px;
+  padding: 3px 8px 6px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .plot-wrap {
   min-height: 0;
   position: relative;
-  padding: 10px 12px 0;
 }
 canvas {
   width: 100%;
@@ -137,6 +174,16 @@ canvas {
   vertical-align: -1px;
   border-radius: 2px;
 }
+@media (max-width: 860px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: 38vh minmax(0, 1fr);
+  }
+  .vector-stack {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: 1fr;
+  }
+}
 </style>
 </head>
 <body>
@@ -161,7 +208,26 @@ canvas {
       <span>latest <strong id="latest">-</strong></span>
     </div>
   </section>
-  <section class="plot-wrap"><canvas id="plot"></canvas></section>
+  <section class="workspace">
+    <section class="vector-stack">
+      <section class="vector-panel">
+        <div class="vector-title">Total SVM</div>
+        <canvas id="vector-total"></canvas>
+        <div class="vector-readout" id="vector-total-readout">angle - length -</div>
+      </section>
+      <section class="vector-panel">
+        <div class="vector-title">Upper SVM</div>
+        <canvas id="vector-upper"></canvas>
+        <div class="vector-readout" id="vector-upper-readout">angle - length -</div>
+      </section>
+      <section class="vector-panel">
+        <div class="vector-title">Lower SVM</div>
+        <canvas id="vector-lower"></canvas>
+        <div class="vector-readout" id="vector-lower-readout">angle - length -</div>
+      </section>
+    </section>
+    <section class="plot-wrap"><canvas id="plot"></canvas></section>
+  </section>
   <section class="legend" id="legend"></section>
 </main>
 <script>
@@ -169,8 +235,8 @@ const colors = [
   "#4cc9f0", "#f72585", "#80ed99", "#ffd166",
   "#b5179e", "#90dbf4", "#f8961e", "#caffbf"
 ];
-const canvas = document.getElementById("plot");
-const ctx = canvas.getContext("2d");
+const plotCanvas = document.getElementById("plot");
+const plotCtx = plotCanvas.getContext("2d");
 const pauseBtn = document.getElementById("pauseBtn");
 const clearBtn = document.getElementById("clearBtn");
 const xZoomInBtn = document.getElementById("xZoomInBtn");
@@ -185,6 +251,29 @@ const rateEl = document.getElementById("rate");
 const latestEl = document.getElementById("latest");
 const sourceEl = document.getElementById("source");
 const legendEl = document.getElementById("legend");
+const vectorPanes = {
+  total: {
+    canvas: document.getElementById("vector-total"),
+    ctx: document.getElementById("vector-total").getContext("2d"),
+    readout: document.getElementById("vector-total-readout"),
+    color: "#43d9ad",
+    value: null,
+  },
+  upper: {
+    canvas: document.getElementById("vector-upper"),
+    ctx: document.getElementById("vector-upper").getContext("2d"),
+    readout: document.getElementById("vector-upper-readout"),
+    color: "#4cc9f0",
+    value: null,
+  },
+  lower: {
+    canvas: document.getElementById("vector-lower"),
+    ctx: document.getElementById("vector-lower").getContext("2d"),
+    readout: document.getElementById("vector-lower-readout"),
+    color: "#f8961e",
+    value: null,
+  },
+};
 
 let paused = false;
 let channelCount = 0;
@@ -206,12 +295,19 @@ function setWindowSize(value) {
   if (rows.length > windowSize) rows.splice(0, rows.length - windowSize);
 }
 
-function resizeCanvas() {
+function resizeCanvasElement(canvas, context) {
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
   canvas.width = Math.max(1, Math.floor(rect.width * dpr));
   canvas.height = Math.max(1, Math.floor(rect.height * dpr));
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  context.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+function resizeCanvas() {
+  resizeCanvasElement(plotCanvas, plotCtx);
+  for (const pane of Object.values(vectorPanes)) {
+    resizeCanvasElement(pane.canvas, pane.ctx);
+  }
 }
 
 function setLegend(n) {
@@ -229,6 +325,11 @@ function ingest(msg) {
   if (msg.window && !xWindowInput.dataset.touched) setWindowSize(msg.window);
   if (msg.source) sourceEl.textContent = msg.source;
   if (typeof msg.bad_lines === "number") badLines = msg.bad_lines;
+  if (msg.kind === "vector") {
+    updateVector(msg);
+    badEl.textContent = badLines;
+    return;
+  }
   if (!msg.values || paused) {
     badEl.textContent = badLines;
     return;
@@ -240,6 +341,34 @@ function ingest(msg) {
   samplesEl.textContent = sampleCount;
   badEl.textContent = badLines;
   latestEl.textContent = msg.values.join(", ");
+}
+
+function updateVector(msg) {
+  const pane = vectorPanes[msg.target];
+  if (!pane) return;
+  const angle = Number(msg.angle);
+  const radius = Number(msg.radius);
+  let x = Number(msg.x);
+  let y = Number(msg.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    const rad = angle * Math.PI / 180;
+    x = radius * Math.cos(rad);
+    y = radius * Math.sin(rad);
+  }
+  if (!Number.isFinite(angle) || !Number.isFinite(radius) ||
+      !Number.isFinite(x) || !Number.isFinite(y)) {
+    return;
+  }
+  pane.value = { angle, radius: Math.abs(radius), x, y };
+  pane.readout.textContent =
+    `angle ${angle.toFixed(2)} deg  length ${formatLength(Math.abs(radius))}`;
+}
+
+function formatLength(value) {
+  const absValue = Math.abs(value);
+  if (absValue >= 100) return value.toFixed(0);
+  if (absValue >= 10) return value.toFixed(1);
+  return value.toFixed(3);
 }
 
 function computeRange() {
@@ -269,43 +398,141 @@ function computeRange() {
 }
 
 function drawGrid(w, h, ymin, ymax) {
-  ctx.strokeStyle = "#2b3038";
-  ctx.lineWidth = 1;
-  ctx.fillStyle = "#8b95a5";
-  ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  plotCtx.strokeStyle = "#2b3038";
+  plotCtx.lineWidth = 1;
+  plotCtx.fillStyle = "#8b95a5";
+  plotCtx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
   for (let i = 0; i <= 8; i++) {
     const x = (w * i) / 8;
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, h);
-    ctx.stroke();
+    plotCtx.beginPath();
+    plotCtx.moveTo(x, 0);
+    plotCtx.lineTo(x, h);
+    plotCtx.stroke();
   }
   for (let i = 0; i <= 6; i++) {
     const y = (h * i) / 6;
     const value = ymax - ((ymax - ymin) * i) / 6;
+    plotCtx.beginPath();
+    plotCtx.moveTo(0, y);
+    plotCtx.lineTo(w, y);
+    plotCtx.stroke();
+    plotCtx.fillText(value.toFixed(1), 8, Math.max(12, y - 3));
+  }
+}
+
+function drawVectorPane(pane) {
+  const rect = pane.canvas.getBoundingClientRect();
+  const w = rect.width;
+  const h = rect.height;
+  const ctx = pane.ctx;
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2;
+  const cy = h / 2;
+  const pad = Math.min(28, Math.max(16, Math.min(w, h) * 0.12));
+  const radiusPxMax = Math.max(1, Math.min(w, h) / 2 - pad);
+  const value = pane.value;
+  const limit = value ? Math.max(value.radius, Math.abs(value.x), Math.abs(value.y), 1) : 1;
+  const scale = radiusPxMax / limit;
+
+  ctx.strokeStyle = "#242a35";
+  ctx.lineWidth = 1;
+  for (let i = -1; i <= 1; i++) {
+    const x = cx + i * radiusPxMax;
+    const y = cy + i * radiusPxMax;
     ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(w, y);
+    ctx.moveTo(x, cy - radiusPxMax);
+    ctx.lineTo(x, cy + radiusPxMax);
     ctx.stroke();
-    ctx.fillText(value.toFixed(1), 8, Math.max(12, y - 3));
+    ctx.beginPath();
+    ctx.moveTo(cx - radiusPxMax, y);
+    ctx.lineTo(cx + radiusPxMax, y);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "#596272";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(cx - radiusPxMax - 4, cy);
+  ctx.lineTo(cx + radiusPxMax + 4, cy);
+  ctx.moveTo(cx, cy + radiusPxMax + 4);
+  ctx.lineTo(cx, cy - radiusPxMax - 4);
+  ctx.stroke();
+
+  ctx.fillStyle = "#8b95a5";
+  ctx.font = "11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  ctx.fillText("x", Math.min(w - 12, cx + radiusPxMax + 7), cy - 5);
+  ctx.fillText("y", cx + 5, Math.max(12, cy - radiusPxMax - 7));
+
+  if (!value) {
+    ctx.fillStyle = "#6f7888";
+    ctx.textAlign = "center";
+    ctx.fillText("waiting", cx, cy - 10);
+    ctx.textAlign = "left";
+    return;
+  }
+
+  const circleR = value.radius * scale;
+  ctx.strokeStyle = "rgba(67, 217, 173, 0.42)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(cx, cy, circleR, 0, Math.PI * 2);
+  ctx.stroke();
+
+  const vx = cx + value.x * scale;
+  const vy = cy - value.y * scale;
+  ctx.strokeStyle = pane.color;
+  ctx.fillStyle = pane.color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(vx, vy);
+  ctx.stroke();
+
+  const headAngle = Math.atan2(cy - vy, vx - cx);
+  const head = 8;
+  ctx.beginPath();
+  ctx.moveTo(vx, vy);
+  ctx.lineTo(vx - head * Math.cos(headAngle - 0.45), vy + head * Math.sin(headAngle - 0.45));
+  ctx.lineTo(vx - head * Math.cos(headAngle + 0.45), vy + head * Math.sin(headAngle + 0.45));
+  ctx.closePath();
+  ctx.fill();
+
+  const lengthLabel = `L=${formatLength(value.radius)}`;
+  ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  const textW = ctx.measureText(lengthLabel).width;
+  const labelX = Math.max(6, Math.min(w - textW - 10, cx + value.x * scale * 0.55 + 8));
+  const labelY = Math.max(14, Math.min(h - 14, cy - value.y * scale * 0.55 - 8));
+  ctx.fillStyle = "rgba(12, 13, 17, 0.78)";
+  ctx.fillRect(labelX - 4, labelY - 10, textW + 8, 20);
+  ctx.fillStyle = pane.color;
+  ctx.fillText(lengthLabel, labelX, labelY);
+  ctx.textBaseline = "alphabetic";
+}
+
+function drawVectors() {
+  for (const pane of Object.values(vectorPanes)) {
+    drawVectorPane(pane);
   }
 }
 
 function draw() {
-  const rect = canvas.getBoundingClientRect();
+  const rect = plotCanvas.getBoundingClientRect();
   const w = rect.width;
   const h = rect.height;
-  ctx.clearRect(0, 0, w, h);
+  plotCtx.clearRect(0, 0, w, h);
   const [ymin, ymax] = computeRange();
   drawGrid(w, h, ymin, ymax);
+  drawVectors();
 
   const n = rows.length;
   const xStep = n > 1 ? w / (windowSize - 1) : w;
   const yScale = h / (ymax - ymin);
   for (let ch = 0; ch < channelCount; ch++) {
-    ctx.strokeStyle = colors[ch % colors.length];
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
+    plotCtx.strokeStyle = colors[ch % colors.length];
+    plotCtx.lineWidth = 1.5;
+    plotCtx.beginPath();
     let started = false;
     for (let i = 0; i < n; i++) {
       const v = rows[i][ch];
@@ -313,13 +540,13 @@ function draw() {
       const x = w - (n - 1 - i) * xStep;
       const y = h - (v - ymin) * yScale;
       if (!started) {
-        ctx.moveTo(x, y);
+        plotCtx.moveTo(x, y);
         started = true;
       } else {
-        ctx.lineTo(x, y);
+        plotCtx.lineTo(x, y);
       }
     }
-    ctx.stroke();
+    plotCtx.stroke();
   }
 
   const now = performance.now();
@@ -372,6 +599,7 @@ class WaveState:
     seq: int = 0
     bad_lines: int = 0
     samples: deque[list[int]] = field(default_factory=deque)
+    vectors: dict[str, dict] = field(default_factory=dict)
     subscribers: list[queue.Queue[dict]] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -383,12 +611,37 @@ class WaveState:
             while len(self.samples) > self.window:
                 self.samples.popleft()
             msg = {
+                "kind": "wave",
                 "seq": self.seq,
                 "values": values,
                 "bad_lines": self.bad_lines,
                 "window": self.window,
                 "source": self.source,
             }
+            subscribers = list(self.subscribers)
+        for sub in subscribers:
+            try:
+                sub.put_nowait(msg)
+            except queue.Full:
+                pass
+
+    def push_vector(self, target: str, angle: float, radius: float) -> None:
+        if target not in ("total", "upper", "lower"):
+            self.push_bad_line()
+            return
+        msg: dict[str, float | int | str]
+        with self.lock:
+            msg = {
+                "kind": "vector",
+                "target": target,
+                "angle": angle,
+                "radius": radius,
+                "seq": self.seq,
+                "bad_lines": self.bad_lines,
+                "window": self.window,
+                "source": self.source,
+            }
+            self.vectors[target] = msg
             subscribers = list(self.subscribers)
         for sub in subscribers:
             try:
@@ -418,8 +671,17 @@ class WaveState:
             self.subscribers.append(sub)
             for index, values in enumerate(self.samples, start=max(1, self.seq - len(self.samples) + 1)):
                 sub.put_nowait({
+                    "kind": "wave",
                     "seq": index,
                     "values": values,
+                    "bad_lines": self.bad_lines,
+                    "window": self.window,
+                    "source": self.source,
+                })
+            for msg in self.vectors.values():
+                sub.put_nowait({
+                    **msg,
+                    "seq": self.seq,
                     "bad_lines": self.bad_lines,
                     "window": self.window,
                     "source": self.source,
@@ -445,6 +707,59 @@ def parse_line(line: bytes, channels: int) -> list[int] | None:
         return None
 
 
+def parse_message(line: bytes, channels: int) -> dict | None:
+    text = line.decode("ascii", errors="ignore").strip()
+    if not text:
+        return None
+
+    if ":" not in text:
+        values = parse_line(line, channels)
+        return {"kind": "wave", "values": values} if values is not None else None
+
+    prefix, payload = text.split(":", 1)
+    prefix = prefix.strip().lower()
+    payload = payload.strip()
+    if prefix in ("wave", "plot", "right"):
+        values = parse_line(payload.encode("ascii", errors="ignore"), channels)
+        return {"kind": "wave", "values": values} if values is not None else None
+
+    if prefix in ("svm", "vector"):
+        parts = [part.strip() for part in payload.split(",")]
+        if len(parts) != 3:
+            return None
+        target = parts[0].lower()
+        if target not in ("total", "upper", "lower"):
+            return None
+        try:
+            angle = float(parts[1])
+            radius = float(parts[2])
+        except ValueError:
+            return None
+        if not math.isfinite(angle) or not math.isfinite(radius):
+            return None
+        return {
+            "kind": "vector",
+            "target": target,
+            "angle": angle,
+            "radius": radius,
+        }
+
+    return None
+
+
+def push_message(state: WaveState, msg: dict | None) -> None:
+    if msg is None:
+        state.push_bad_line()
+        return
+    if msg["kind"] == "wave":
+        state.push_sample(msg["values"])
+        return
+    if msg["kind"] == "vector":
+        state.push_vector(msg["target"], msg["angle"], msg["radius"])
+        return
+    state.push_bad_line()
+
+
 def serial_reader(state: WaveState, port: str, baud: int, stop: threading.Event) -> None:
     try:
         import serial
@@ -460,11 +775,7 @@ def serial_reader(state: WaveState, port: str, baud: int, stop: threading.Event)
             for byte in chunk:
                 if byte in (10, 13):
                     if pending:
-                        values = parse_line(bytes(pending), state.channels)
-                        if values is None:
-                            state.push_bad_line()
-                        else:
-                            state.push_sample(values)
+                        push_message(state, parse_message(bytes(pending), state.channels))
                         pending.clear()
                 else:
                     pending.append(byte)
@@ -488,6 +799,9 @@ def demo_reader(state: WaveState, stop: threading.Event, rate_hz: float) -> None
         while len(values) < state.channels:
             values.append(random.randint(-500, 500))
         state.push_sample(values[:state.channels])
+        state.push_vector("total", (t * 90.0) % 360.0, 1000.0)
+        state.push_vector("upper", (t * 125.0 + 30.0) % 360.0, 760.0 + 140.0 * math.sin(t * 2.0))
+        state.push_vector("lower", (t * 70.0 - 20.0) % 360.0, 650.0 + 120.0 * math.cos(t * 1.7))
         next_tick += period
         time.sleep(max(0.0, next_tick - time.monotonic()))
 
@@ -544,8 +858,8 @@ def make_handler(state: WaveState):
         def handle_parse_test(self, query: str) -> None:
             params = parse_qs(query)
             raw = params.get("line", [""])[0].encode("ascii", errors="ignore")
-            parsed = parse_line(raw, state.channels)
-            payload = {"ok": parsed is not None, "values": parsed}
+            parsed = parse_message(raw, state.channels)
+            payload = {"ok": parsed is not None, "message": parsed}
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
