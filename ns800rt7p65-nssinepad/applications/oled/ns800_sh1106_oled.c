@@ -90,10 +90,15 @@ static const rt_uint8_t *oled_glyph(char c)
     static const rt_uint8_t C[5] = {0x3E, 0x41, 0x41, 0x41, 0x22};
     static const rt_uint8_t D[5] = {0x7F, 0x41, 0x41, 0x22, 0x1C};
     static const rt_uint8_t F[5] = {0x7F, 0x09, 0x09, 0x09, 0x01};
+    static const rt_uint8_t H[5] = {0x7F, 0x08, 0x08, 0x08, 0x7F};
+    static const rt_uint8_t I[5] = {0x00, 0x41, 0x7F, 0x41, 0x00};
+    static const rt_uint8_t L[5] = {0x7F, 0x40, 0x40, 0x40, 0x40};
     static const rt_uint8_t N[5] = {0x7F, 0x02, 0x0C, 0x10, 0x7F};
     static const rt_uint8_t O[5] = {0x3E, 0x41, 0x41, 0x41, 0x3E};
     static const rt_uint8_t P[5] = {0x7F, 0x09, 0x09, 0x09, 0x06};
     static const rt_uint8_t S[5] = {0x26, 0x49, 0x49, 0x49, 0x32};
+    static const rt_uint8_t T[5] = {0x01, 0x01, 0x7F, 0x01, 0x01};
+    static const rt_uint8_t V[5] = {0x1F, 0x20, 0x40, 0x20, 0x1F};
     static const rt_uint8_t a[5] = {0x20, 0x54, 0x54, 0x54, 0x78};
     static const rt_uint8_t d[5] = {0x38, 0x44, 0x44, 0x48, 0x7F};
     static const rt_uint8_t e[5] = {0x38, 0x54, 0x54, 0x54, 0x18};
@@ -120,10 +125,15 @@ static const rt_uint8_t *oled_glyph(char c)
     case 'C': return C;
     case 'D': return D;
     case 'F': return F;
+    case 'H': return H;
+    case 'I': return I;
+    case 'L': return L;
     case 'N': return N;
     case 'O': return O;
     case 'P': return P;
     case 'S': return S;
+    case 'T': return T;
+    case 'V': return V;
     case 'a': return a;
     case 'd': return d;
     case 'e': return e;
@@ -140,7 +150,7 @@ int ns800_sh1106_oled_start(void)
 {
     static const rt_uint8_t init_cmds[] =
     {
-        0xAE, 0x02, 0x10, 0x40, 0x81, 0xA0, 0xC0,
+        0xAE, 0x02, 0x10, 0x40, 0x81, 0xA0, 0xA1, 0xC8,
         0xA6, 0xA8, 0x3F, 0xD3, 0x00, 0xD5, 0x80, 0xD9,
         0xF1, 0xDA, 0x12, 0xDB, 0x40, 0x20, 0x02, 0xA4,
         0xA6, 0xAF,
@@ -230,4 +240,92 @@ void ns800_sh1106_oled_draw_string(rt_uint32_t x, rt_uint32_t y, const char *tex
         }
         x += 6U;
     }
+}
+
+void ns800_sh1106_oled_show_string(rt_uint32_t x, rt_uint32_t y, const char *text)
+{
+    ns800_sh1106_oled_draw_string(x, y, text);
+}
+
+static int oled_abs_i32(int value)
+{
+    return (value < 0) ? -value : value;
+}
+
+static void oled_i32_to_dec(char *buf, int value)
+{
+    char tmp[12];
+    int pos = 0;
+    int out = 0;
+    unsigned int v;
+
+    if (value < 0)
+    {
+        buf[out++] = '-';
+        v = (unsigned int)(-value);
+    }
+    else
+    {
+        v = (unsigned int)value;
+    }
+
+    do
+    {
+        tmp[pos++] = (char)('0' + (v % 10U));
+        v /= 10U;
+    } while (v != 0U);
+
+    while (pos > 0)
+    {
+        buf[out++] = tmp[--pos];
+    }
+    buf[out] = '\0';
+}
+
+void ns800_sh1106_oled_show_float(rt_uint32_t x, rt_uint32_t y, float value)
+{
+    char buf[16];
+    char whole[12];
+    int fixed;
+    int abs_fixed;
+    int pos = 0;
+    int i;
+
+    fixed = (int)(value * 100.0f);
+    if ((value >= 0.0f) && (((float)fixed / 100.0f) < value))
+    {
+        fixed++;
+    }
+    if ((value < 0.0f) && (((float)fixed / 100.0f) > value))
+    {
+        fixed--;
+    }
+
+    abs_fixed = oled_abs_i32(fixed);
+    if (fixed < 0)
+    {
+        buf[pos++] = '-';
+    }
+
+    oled_i32_to_dec(whole, abs_fixed / 100);
+    for (i = 0; (whole[i] != '\0') && (pos < ((int)sizeof(buf) - 1)); i++)
+    {
+        buf[pos++] = whole[i];
+    }
+
+    if (pos < ((int)sizeof(buf) - 1))
+    {
+        buf[pos++] = '.';
+    }
+    if (pos < ((int)sizeof(buf) - 1))
+    {
+        buf[pos++] = (char)('0' + ((abs_fixed / 10) % 10));
+    }
+    if (pos < ((int)sizeof(buf) - 1))
+    {
+        buf[pos++] = (char)('0' + (abs_fixed % 10));
+    }
+    buf[pos] = '\0';
+
+    ns800_sh1106_oled_draw_string(x, y, buf);
 }

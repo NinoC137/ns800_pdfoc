@@ -21,6 +21,8 @@ void ns800_sh1106_oled_clear(void);
 void ns800_sh1106_oled_flush(void);
 void ns800_sh1106_oled_draw_pixel(rt_uint32_t x, rt_uint32_t y, rt_bool_t on);
 void ns800_sh1106_oled_draw_string(rt_uint32_t x, rt_uint32_t y, const char *text);
+void ns800_sh1106_oled_show_string(rt_uint32_t x, rt_uint32_t y, const char *text);
+void ns800_sh1106_oled_show_float(rt_uint32_t x, rt_uint32_t y, float value);
 
 #ifdef __cplusplus
 }
