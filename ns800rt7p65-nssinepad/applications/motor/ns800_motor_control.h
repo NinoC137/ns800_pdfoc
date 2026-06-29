@@ -191,6 +191,7 @@ typedef struct
     svm_dq_f32_t current_error_dq;
     svm_dq_f32_t voltage_cmd_dq;
     svm_ab_f32_t voltage_cmd_ab;
+    svm_split_ab_f32_t voltage_split_ab;
     svm_abc_f32_t voltage_cmd_abc;
     svm_dual_out_t duty;
     uint32_t status;

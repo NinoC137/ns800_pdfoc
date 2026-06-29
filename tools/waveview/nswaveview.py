@@ -694,12 +694,12 @@ class WaveState:
                 self.subscribers.remove(sub)
 
 
-def parse_line(line: bytes, channels: int) -> list[int] | None:
+def parse_line(line: bytes, channels: int | None) -> list[int] | None:
     text = line.decode("ascii", errors="ignore").strip()
     if not text:
         return None
     parts = [part.strip() for part in text.split(",")]
-    if len(parts) != channels:
+    if (channels is not None) and (len(parts) != channels):
         return None
     try:
         return [int(part, 10) for part in parts]
@@ -720,7 +720,7 @@ def parse_message(line: bytes, channels: int) -> dict | None:
     prefix = prefix.strip().lower()
     payload = payload.strip()
     if prefix in ("wave", "plot", "right"):
-        values = parse_line(payload.encode("ascii", errors="ignore"), channels)
+        values = parse_line(payload.encode("ascii", errors="ignore"), None)
         return {"kind": "wave", "values": values} if values is not None else None
 
     if prefix in ("svm", "vector"):

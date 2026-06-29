@@ -6,6 +6,8 @@
 
 #include "ns800_motor_app.h"
 
+#include <stdlib.h>
+
 #include <board.h>
 
 #include "epwm.h"
@@ -26,6 +28,20 @@
 #define NS800_MOTOR_ADC_CURRENT_ZERO          (2048.0f)
 #define NS800_MOTOR_ADC_CURRENT_GAIN_A_COUNT  (0.001f)
 #define NS800_MOTOR_MA_TO_A                   (0.001f)
+#define NS800_MOTOR_WAVE_THREAD_STACK         1536U
+#define NS800_MOTOR_WAVE_THREAD_PRIO          20U
+#define NS800_MOTOR_WAVE_THREAD_TICK          10U
+#define NS800_MOTOR_WAVE_DEFAULT_RATE_HZ      50U
+#define NS800_MOTOR_WAVE_MAX_RATE_HZ          100U
+#define NS800_MOTOR_WAVE_MV_PER_V             1000.0f
+#define NS800_MOTOR_RAD_TO_DEG                (57.2957795131f)
+#define NS800_MOTOR_PI_OVER_4                 (0.7853981634f)
+
+typedef struct
+{
+    rt_uint32_t seq;
+    ns800_motor_output_t output;
+} ns800_motor_wave_snapshot_t;
 
 static ns800_motor_config_t motor_cfg;
 static ns800_motor_params_t motor_params;
@@ -36,6 +52,12 @@ static volatile rt_bool_t motor_reset_pending = RT_FALSE;
 static volatile ns800_motor_mode_t motor_mode = NS800_MOTOR_MODE_OPEN_LOOP;
 static rt_uint32_t motor_last_adc_seq = 0U;
 static rt_uint32_t motor_last_reset_count = 0U;
+static volatile rt_bool_t motor_wave_enable = RT_FALSE;
+static volatile rt_uint32_t motor_wave_rate_hz = NS800_MOTOR_WAVE_DEFAULT_RATE_HZ;
+static volatile rt_uint32_t motor_wave_decim = NS800_MOTOR_CONTROL_FREQ_HZ / NS800_MOTOR_WAVE_DEFAULT_RATE_HZ;
+static volatile rt_bool_t motor_wave_snapshot_ready = RT_FALSE;
+static rt_thread_t motor_wave_thread = RT_NULL;
+static ns800_motor_wave_snapshot_t motor_wave_snapshot;
 
 /**
  * @brief 获取转子机械角和机械角速度的默认弱实现。
@@ -92,6 +114,243 @@ static float motor_clamp(float value, float min_value, float max_value)
     }
 
     return value;
+}
+
+/**
+ * @brief 将浮点值转换为四舍五入整数。
+ *
+ * @param value 输入值。
+ * @return 四舍五入后的 int。
+ */
+static int motor_round_to_int(float value)
+{
+    return (int)((value >= 0.0f) ? (value + 0.5f) : (value - 0.5f));
+}
+
+/**
+ * @brief 调试遥测用平方根近似，只在线程上下文使用。
+ *
+ * @param value 非负输入。
+ * @return 平方根近似值。
+ */
+static float motor_sqrt_approx(float value)
+{
+    float x;
+    rt_uint32_t i;
+
+    if (value <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    x = (value >= 1.0f) ? value : 1.0f;
+    for (i = 0U; i < 6U; i++)
+    {
+        x = 0.5f * (x + (value / x));
+    }
+
+    return x;
+}
+
+/**
+ * @brief atan 近似，最大误差满足调试显示需求。
+ *
+ * @param x 输入斜率。
+ * @return 角度，单位 rad。
+ */
+static float motor_atan_approx(float x)
+{
+    float ax = motor_abs(x);
+    float base;
+    float result;
+
+    if (ax <= 1.0f)
+    {
+        result = (NS800_MOTOR_PI_OVER_4 * x) - (x * (ax - 1.0f) * (0.2447f + (0.0663f * ax)));
+    }
+    else
+    {
+        base = NS800_MOTOR_PI_OVER_4 * (1.0f / x);
+        result = (x > 0.0f) ? (NS800_MOTOR_PI / 2.0f) : (-NS800_MOTOR_PI / 2.0f);
+        result -= base - ((1.0f / x) * ((1.0f / ax) - 1.0f) * (0.2447f + (0.0663f / ax)));
+    }
+
+    return result;
+}
+
+/**
+ * @brief atan2 近似，返回 [-pi, pi]。
+ *
+ * @param y beta 分量。
+ * @param x alpha 分量。
+ * @return 角度，单位 rad。
+ */
+static float motor_atan2_approx(float y, float x)
+{
+    float angle;
+
+    if (x > 0.0f)
+    {
+        return motor_atan_approx(y / x);
+    }
+    if (x < 0.0f)
+    {
+        angle = motor_atan_approx(y / x);
+        return (y >= 0.0f) ? (angle + NS800_MOTOR_PI) : (angle - NS800_MOTOR_PI);
+    }
+    if (y > 0.0f)
+    {
+        return NS800_MOTOR_PI / 2.0f;
+    }
+    if (y < 0.0f)
+    {
+        return -NS800_MOTOR_PI / 2.0f;
+    }
+
+    return 0.0f;
+}
+
+/**
+ * @brief 将 alpha/beta 矢量转换为 WaveView 需要的角度和长度。
+ *
+ * @param ab alpha/beta 矢量。
+ * @param angle_deg 输出角度，单位 deg，[0, 360)。
+ * @param length_mv 输出长度，单位 mV。
+ */
+static void motor_wave_vector_metrics(const svm_ab_f32_t *ab, int *angle_deg, int *length_mv)
+{
+    float angle;
+    float length_v;
+
+    if ((ab == RT_NULL) || (angle_deg == RT_NULL) || (length_mv == RT_NULL))
+    {
+        return;
+    }
+
+    angle = motor_atan2_approx(ab->beta, ab->alpha) * NS800_MOTOR_RAD_TO_DEG;
+    if (angle < 0.0f)
+    {
+        angle += 360.0f;
+    }
+    length_v = motor_sqrt_approx((ab->alpha * ab->alpha) + (ab->beta * ab->beta));
+
+    *angle_deg = motor_round_to_int(angle);
+    *length_mv = motor_round_to_int(length_v * NS800_MOTOR_WAVE_MV_PER_V);
+}
+
+/**
+ * @brief 按配置抽样锁存一帧 WaveView 遥测快照。
+ *
+ * 该函数在 ISR 中调用，只复制最近控制输出，不做串口发送和复杂计算。
+ *
+ * @param out 最近一拍控制输出。
+ */
+static void motor_wave_capture_isr(const ns800_motor_output_t *out)
+{
+    rt_uint32_t decim = motor_wave_decim;
+
+    if ((motor_wave_enable == RT_FALSE) || (out == RT_NULL) || (decim == 0U))
+    {
+        return;
+    }
+    if ((motor_status.isr_count % decim) != 0U)
+    {
+        return;
+    }
+
+    motor_wave_snapshot.seq = motor_status.isr_count;
+    motor_wave_snapshot.output = *out;
+    motor_wave_snapshot_ready = RT_TRUE;
+}
+
+/**
+ * @brief 输出一帧 WaveView 文本协议。
+ *
+ * @param snapshot ISR 锁存的遥测快照。
+ */
+static void motor_wave_send_snapshot(const ns800_motor_wave_snapshot_t *snapshot)
+{
+    const ns800_motor_output_t *out;
+    int total_angle;
+    int total_length;
+    int upper_angle;
+    int upper_length;
+    int lower_angle;
+    int lower_length;
+
+    if (snapshot == RT_NULL)
+    {
+        return;
+    }
+
+    out = &snapshot->output;
+    motor_wave_vector_metrics(&out->voltage_cmd_ab, &total_angle, &total_length);
+    motor_wave_vector_metrics(&out->voltage_split_ab.upper, &upper_angle, &upper_length);
+    motor_wave_vector_metrics(&out->voltage_split_ab.lower, &lower_angle, &lower_length);
+
+    rt_kprintf("svm:total,%d,%d\r\n", total_angle, total_length);
+    rt_kprintf("svm:upper,%d,%d\r\n", upper_angle, upper_length);
+    rt_kprintf("svm:lower,%d,%d\r\n", lower_angle, lower_length);
+    rt_kprintf("wave:%d,%d,%d\r\n",
+               motor_round_to_int(out->voltage_cmd_abc.a * NS800_MOTOR_WAVE_MV_PER_V),
+               motor_round_to_int(out->voltage_cmd_abc.b * NS800_MOTOR_WAVE_MV_PER_V),
+               motor_round_to_int(out->voltage_cmd_abc.c * NS800_MOTOR_WAVE_MV_PER_V));
+}
+
+/**
+ * @brief WaveView 发送线程入口。
+ *
+ * @param parameter RT-Thread 线程参数，未使用。
+ */
+static void motor_wave_thread_entry(void *parameter)
+{
+    ns800_motor_wave_snapshot_t snapshot;
+    rt_base_t level;
+
+    RT_UNUSED(parameter);
+
+    while (1)
+    {
+        if ((motor_wave_enable == RT_TRUE) && (motor_wave_snapshot_ready == RT_TRUE))
+        {
+            level = rt_hw_interrupt_disable();
+            snapshot = motor_wave_snapshot;
+            motor_wave_snapshot_ready = RT_FALSE;
+            rt_hw_interrupt_enable(level);
+            motor_wave_send_snapshot(&snapshot);
+        }
+        else
+        {
+            rt_thread_mdelay(10);
+        }
+    }
+}
+
+/**
+ * @brief 创建 WaveView 发送线程。
+ *
+ * @return 0 表示成功。
+ */
+static int motor_wave_thread_start(void)
+{
+    if (motor_wave_thread != RT_NULL)
+    {
+        return 0;
+    }
+
+    motor_wave_thread = rt_thread_create("mwave",
+                                         motor_wave_thread_entry,
+                                         RT_NULL,
+                                         NS800_MOTOR_WAVE_THREAD_STACK,
+                                         NS800_MOTOR_WAVE_THREAD_PRIO,
+                                         NS800_MOTOR_WAVE_THREAD_TICK);
+    if (motor_wave_thread == RT_NULL)
+    {
+        return -RT_ERROR;
+    }
+
+    rt_thread_startup(motor_wave_thread);
+    return 0;
 }
 
 /**
@@ -218,6 +477,7 @@ void ns800_motor_isr(void)
     motor_status.mode = motor_mode;
 
     ns800_pwm_app_write_svm(&motor_status.last_output.duty);
+    motor_wave_capture_isr(&motor_status.last_output);
 
     RT_UNUSED(status);
     EPWM_clearEventTriggerInterruptFlag(NS800_MOTOR_EPWM_BASE);
@@ -239,6 +499,8 @@ int ns800_motor_app_start(void)
     motor_mode = NS800_MOTOR_MODE_OPEN_LOOP;
     motor_running = RT_FALSE;
     motor_reset_pending = RT_TRUE;
+    motor_wave_enable = RT_FALSE;
+    motor_wave_snapshot_ready = RT_FALSE;
 
     ns800_motor_default_config(&motor_cfg);
     ns800_motor_default_params(&motor_params);
@@ -250,6 +512,7 @@ int ns800_motor_app_start(void)
 
     motor_running = RT_TRUE;
     motor_status.mode = motor_mode;
+    motor_wave_thread_start();
     return 0;
 }
 
@@ -393,8 +656,77 @@ static int motor_status_cmd(int argc, char **argv)
     return 0;
 }
 
+/**
+ * @brief FinSH 命令：开启/关闭 WaveView 遥测输出。
+ */
+static int motor_wave_cmd(int argc, char **argv)
+{
+    rt_uint32_t rate_hz;
+
+    if (argc < 2)
+    {
+        rt_kprintf("usage: motor_wave <on|off|status> [rate_hz]\r\n");
+        return -RT_EINVAL;
+    }
+
+    if ((argv[1][0] == 's') || (argv[1][0] == 'S'))
+    {
+        rt_kprintf("motor_wave: %s rate=%uHz decim=%u ready=%u\r\n",
+                   (motor_wave_enable == RT_TRUE) ? "on" : "off",
+                   (unsigned int)motor_wave_rate_hz,
+                   (unsigned int)motor_wave_decim,
+                   (unsigned int)motor_wave_snapshot_ready);
+        return 0;
+    }
+
+    if ((argv[1][0] == 'o') || (argv[1][0] == 'O'))
+    {
+        if ((argv[1][1] == 'n') || (argv[1][1] == 'N'))
+        {
+            rate_hz = motor_wave_rate_hz;
+            if (argc >= 3)
+            {
+                rate_hz = (rt_uint32_t)strtoul(argv[2], RT_NULL, 0);
+            }
+            if (rate_hz == 0U)
+            {
+                rate_hz = NS800_MOTOR_WAVE_DEFAULT_RATE_HZ;
+            }
+            if (rate_hz > NS800_MOTOR_WAVE_MAX_RATE_HZ)
+            {
+                rate_hz = NS800_MOTOR_WAVE_MAX_RATE_HZ;
+            }
+
+            motor_wave_rate_hz = rate_hz;
+            motor_wave_decim = NS800_MOTOR_CONTROL_FREQ_HZ / rate_hz;
+            if (motor_wave_decim == 0U)
+            {
+                motor_wave_decim = 1U;
+            }
+            motor_wave_snapshot_ready = RT_FALSE;
+            motor_wave_enable = RT_TRUE;
+            rt_kprintf("motor_wave: on rate=%uHz decim=%u\r\n",
+                       (unsigned int)motor_wave_rate_hz,
+                       (unsigned int)motor_wave_decim);
+            return 0;
+        }
+
+        if ((argv[1][1] == 'f') || (argv[1][1] == 'F'))
+        {
+            motor_wave_enable = RT_FALSE;
+            motor_wave_snapshot_ready = RT_FALSE;
+            rt_kprintf("motor_wave: off\r\n");
+            return 0;
+        }
+    }
+
+    rt_kprintf("usage: motor_wave <on|off|status> [rate_hz]\r\n");
+    return -RT_EINVAL;
+}
+
 MSH_CMD_EXPORT_ALIAS(motor_ol_cmd, motor_ol, start ns800 motor open-loop test);
 MSH_CMD_EXPORT_ALIAS(motor_speed_cmd, motor_speed, start ns800 motor speed loop);
 MSH_CMD_EXPORT_ALIAS(motor_stop_cmd, motor_stop, stop ns800 motor pwm);
 MSH_CMD_EXPORT_ALIAS(motor_status_cmd, motor_status, show ns800 motor status);
+MSH_CMD_EXPORT_ALIAS(motor_wave_cmd, motor_wave, stream ns800 motor WaveView data);
 #endif

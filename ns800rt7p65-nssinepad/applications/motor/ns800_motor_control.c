@@ -179,6 +179,10 @@ static void motor_clear_output(ns800_motor_output_t *out)
     out->voltage_cmd_dq.q = 0.0f;
     out->voltage_cmd_ab.alpha = 0.0f;
     out->voltage_cmd_ab.beta = 0.0f;
+    out->voltage_split_ab.upper.alpha = 0.0f;
+    out->voltage_split_ab.upper.beta = 0.0f;
+    out->voltage_split_ab.lower.alpha = 0.0f;
+    out->voltage_split_ab.lower.beta = 0.0f;
     out->voltage_cmd_abc.a = 0.0f;
     out->voltage_cmd_abc.b = 0.0f;
     out->voltage_cmd_abc.c = 0.0f;
@@ -444,6 +448,7 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
         svm_sincos(out->theta_e_rad, &sc);
         out->voltage_cmd_ab.alpha = cfg->open_loop_voltage_v * sc.cos_theta;
         out->voltage_cmd_ab.beta = cfg->open_loop_voltage_v * sc.sin_theta;
+        svm_power_split(&out->voltage_cmd_ab, xi, &out->voltage_split_ab);
         svm_inverse_clarke(&out->voltage_cmd_ab, &out->voltage_cmd_abc);
         svm_status = svm_compute_dual(&out->voltage_cmd_ab,
                                       xi,
@@ -515,6 +520,7 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
     out->voltage_cmd_dq.q = motor_clamp(out->voltage_cmd_dq.q, -voltage_limit, voltage_limit);
 
     svm_inverse_park(&out->voltage_cmd_dq, &sc, &out->voltage_cmd_ab);
+    svm_power_split(&out->voltage_cmd_ab, xi, &out->voltage_split_ab);
     svm_inverse_clarke(&out->voltage_cmd_ab, &out->voltage_cmd_abc);
     svm_status = svm_compute_dual(&out->voltage_cmd_ab,
                                   xi,
