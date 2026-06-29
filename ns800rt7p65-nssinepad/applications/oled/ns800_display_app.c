@@ -15,8 +15,8 @@
 #define NS800_DISPLAY_THREAD_STACK  1024U
 #define NS800_DISPLAY_THREAD_PRIO   12U
 #define NS800_DISPLAY_THREAD_TICK   10U
-#define NS800_DISPLAY_REFRESH_MS    200U
-#define NS800_DISPLAY_ADC_ZERO      (2048.0f)
+#define NS800_DISPLAY_REFRESH_MS    100U
+#define NS800_DISPLAY_PHASE_I_ZERO  (2048.0f)
 #define NS800_DISPLAY_ADC_VREF      (3.3f)
 #define NS800_DISPLAY_ADC_FULL      (4095.0f)
 #define NS800_DISPLAY_HV_V_GAIN     (1.0f)
@@ -85,7 +85,12 @@ static float ns800_adc_voltage(rt_uint16_t raw, float gain)
 
 static float ns800_adc_bipolar_current(rt_uint16_t raw, float gain)
 {
-    return (((float)(raw & 0x0fffU)) - NS800_DISPLAY_ADC_ZERO) * gain;
+    return (((float)(raw & 0x0fffU)) - NS800_DISPLAY_PHASE_I_ZERO) * gain;
+}
+
+static float ns800_adc_unipolar_current(rt_uint16_t raw, float gain)
+{
+    return ((float)(raw & 0x0fffU)) * gain;
 }
 
 static void ns800_display_sample_power(float *hv_power, float *lv_power, float *total_power)
@@ -112,9 +117,9 @@ static void ns800_display_sample_power(float *hv_power, float *lv_power, float *
     }
 
     hv_v = ns800_adc_voltage(frame[0], NS800_DISPLAY_HV_V_GAIN);
-    hv_i = ns800_adc_bipolar_current(frame[1], NS800_DISPLAY_HV_I_GAIN);
+    hv_i = ns800_adc_unipolar_current(frame[1], NS800_DISPLAY_HV_I_GAIN);
     lv_v = ns800_adc_voltage(frame[2], NS800_DISPLAY_LV_V_GAIN);
-    lv_i = ns800_adc_bipolar_current(frame[3], NS800_DISPLAY_LV_I_GAIN);
+    lv_i = ns800_adc_unipolar_current(frame[3], NS800_DISPLAY_LV_I_GAIN);
     va = ns800_adc_voltage(frame[4], NS800_DISPLAY_PHASE_V_GAIN);
     ia = ns800_adc_bipolar_current(frame[5], NS800_DISPLAY_PHASE_I_GAIN);
     vb = ns800_adc_voltage(frame[6], NS800_DISPLAY_PHASE_V_GAIN);
@@ -139,10 +144,10 @@ static void ns800_draw_status_page(void)
 
     ns800_sh1106_oled_clear();
     ns800_sh1106_oled_show_string(0, 0, "HVDC P:");
-    ns800_sh1106_oled_show_float(36, 0, hv_power);
+    ns800_sh1106_oled_show_float(80, 0, hv_power);
 
     ns800_sh1106_oled_show_string(0, 16, "LVDC P:");
-    ns800_sh1106_oled_show_float(36, 16, lv_power);
+    ns800_sh1106_oled_show_float(80, 16, lv_power);
 
     ns800_sh1106_oled_show_string(0, 32, "xi:");
     ns800_sh1106_oled_show_float(18, 32, ns800_param_xi);
