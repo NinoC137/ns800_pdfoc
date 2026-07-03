@@ -27,6 +27,16 @@ volatile rt_int32_t ns800_param_speed = 300;
 volatile rt_int32_t ns800_param_force_ma = 500;
 static volatile rt_uint32_t button_reset_count = 0U;
 
+/*
+GPIO17--S1--f--
+GPIO15--S7--RST
+GPIO13--S2--F++
+GPIO18--S3--S--
+GPIO16--S4--S++
+GPIO14--S5--xi--
+GPIO12--S6--xi++
+*/
+
 typedef enum
 {
     NS800_BTN_XI_INC = 0,
@@ -47,14 +57,14 @@ struct ns800_button_pin
 
 static const struct ns800_button_pin button_pins[NS800_BUTTON_COUNT] =
 {
-    {GPIOA, GPIO_PIN_12},
-    {GPIOA, GPIO_PIN_13},
-    {GPIOA, GPIO_PIN_14},
-    {GPIOA, GPIO_PIN_15},
-    {GPIOA, GPIO_PIN_16},
-    {GPIOA, GPIO_PIN_17},
-    {GPIOA, GPIO_PIN_18},
-    {GPIOB, GPIO_PIN_9},
+    {GPIOA, GPIO_PIN_12}, /* S6: xi++ */
+    {GPIOA, GPIO_PIN_14}, /* S5: xi-- */
+    {GPIOA, GPIO_PIN_16}, /* S4: S++ */
+    {GPIOA, GPIO_PIN_18}, /* S3: S-- */
+    {GPIOA, GPIO_PIN_13}, /* S2: F++ */
+    {GPIOA, GPIO_PIN_17}, /* S1: F-- */
+    {GPIOA, GPIO_PIN_15}, /* S7: RST */
+    {GPIOB, GPIO_PIN_9},  /* IO12/13 UART/button mode toggle */
 };
 
 static Button buttons[NS800_BUTTON_COUNT];
@@ -150,7 +160,8 @@ static void ns800_button_gpio_init(void)
 
     for (i = 0U; i < NS800_BUTTON_COUNT; i++)
     {
-        if ((i == NS800_BTN_XI_INC) || (i == NS800_BTN_XI_DEC))
+        if ((button_pins[i].port == GPIOA) &&
+            ((button_pins[i].pin == GPIO_PIN_12) || (button_pins[i].pin == GPIO_PIN_13)))
         {
             continue;
         }
@@ -185,14 +196,13 @@ static void ns800_button_click(Button *handle, void *user_data)
     switch (id)
     {
     case NS800_BTN_XI_INC:
-        if(io12_13_uart_mode == RT_FALSE) {
+        if(io12_13_uart_mode == RT_FALSE)
+        {
             ns800_param_xi += NS800_XI_STEP;
         }
         break;
     case NS800_BTN_XI_DEC:
-        if(io12_13_uart_mode == RT_FALSE) {
-            ns800_param_xi -= NS800_XI_STEP;
-        }
+        ns800_param_xi -= NS800_XI_STEP;
         break;
     case NS800_BTN_SPEED_INC:
         ns800_param_speed += NS800_SPEED_STEP;
@@ -201,7 +211,10 @@ static void ns800_button_click(Button *handle, void *user_data)
         ns800_param_speed -= NS800_SPEED_STEP;
         break;
     case NS800_BTN_FORCE_INC:
-        ns800_param_force_ma += NS800_FORCE_STEP_MA;
+        if(io12_13_uart_mode == RT_FALSE)
+        {
+            ns800_param_force_ma += NS800_FORCE_STEP_MA;
+        }
         break;
     case NS800_BTN_FORCE_DEC:
         ns800_param_force_ma -= NS800_FORCE_STEP_MA;
@@ -234,7 +247,7 @@ static void ns800_button_init_all(void)
     rt_uint32_t i;
 
     ns800_button_gpio_init();
-    ns800_io12_13_to_uart();
+    ns800_io12_13_to_buttons();
     for (i = 0U; i < NS800_BUTTON_COUNT; i++)
     {
         button_init(&buttons[i], ns800_button_read_level, 0U, (uint8_t)i);
