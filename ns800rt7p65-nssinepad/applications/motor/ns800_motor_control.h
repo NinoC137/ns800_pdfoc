@@ -10,6 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "ns800_motor_config.h"
 #include "svm_pi.h"
 #include "svm_power_alloc.h"
 #include "svm_transform.h"
@@ -18,7 +19,6 @@
 extern "C" {
 #endif
 
-#define NS800_MOTOR_CONTROL_PERIOD_S       (1.0e-4f)
 #define NS800_MOTOR_PI                     (3.1415926535897932385f)
 #define NS800_MOTOR_TWO_PI                 (6.2831853071795864769f)
 
@@ -87,7 +87,7 @@ typedef struct
  */
 typedef struct
 {
-    /**< 控制周期，单位 s；当前 EPWM2 ISR 为 10 kHz。 */
+    /**< 控制周期，单位 s；当前 EPWM2 ISR 为 NS800_MOTOR_CONTROL_FREQ_HZ。 */
     float sample_time_s;
     /**< 开环电角频率，单位 Hz。 */
     float open_loop_freq_hz;

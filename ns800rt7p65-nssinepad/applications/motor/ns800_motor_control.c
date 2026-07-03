@@ -6,21 +6,6 @@
 
 #include "ns800_motor_control.h"
 
-#define NS800_MOTOR_DEFAULT_POLE_PAIRS            2u
-#define NS800_MOTOR_DEFAULT_OPEN_LOOP_RPM         (300.0f)
-#define NS800_MOTOR_DEFAULT_PHASE_RESISTANCE_OHM  (15.0f)
-#define NS800_MOTOR_DEFAULT_TORQUE_CONSTANT_NM_A  (0.10f)
-#define NS800_MOTOR_DEFAULT_FLUX_WB               (0.02f)
-#define NS800_MOTOR_DEFAULT_LD_H                  (13.0e-3f)
-#define NS800_MOTOR_DEFAULT_LQ_H                  (13.0e-3f)
-#define NS800_MOTOR_DEFAULT_CURRENT_KP            (2.0f)
-#define NS800_MOTOR_DEFAULT_CURRENT_KI            (800.0f)
-#define NS800_MOTOR_DEFAULT_SPEED_KP              (0.02f)
-#define NS800_MOTOR_DEFAULT_SPEED_KI              (2.0f)
-#define NS800_MOTOR_DEFAULT_MAX_CURRENT_A         (20.0f)
-#define NS800_MOTOR_DEFAULT_MAX_TORQUE_NM         (2.0f)
-#define NS800_MOTOR_DEFAULT_MAX_SPEED_RAD_S       (600.0f)
-#define NS800_MOTOR_DEFAULT_MAX_VOLTAGE_V         (24.0f)
 #define NS800_MOTOR_RPM_TO_RAD_S                  (0.1047197551f)
 
 /**
@@ -281,12 +266,11 @@ void ns800_motor_default_config(ns800_motor_config_t *cfg)
     }
 
     cfg->sample_time_s = NS800_MOTOR_CONTROL_PERIOD_S;
-    cfg->open_loop_freq_hz = (NS800_MOTOR_DEFAULT_OPEN_LOOP_RPM / 60.0f) *
-                             (float)NS800_MOTOR_DEFAULT_POLE_PAIRS;
-    cfg->open_loop_voltage_v = 24.0f;
-    cfg->dc_upper_voltage_v = 48.0f;
-    cfg->dc_lower_voltage_v = 24.0f;
-    cfg->id_ref_a = 0.0f;
+    cfg->open_loop_freq_hz = NS800_MOTOR_DEFAULT_OPEN_LOOP_FREQ_HZ;
+    cfg->open_loop_voltage_v = NS800_MOTOR_DEFAULT_OPEN_LOOP_VOLTAGE_V;
+    cfg->dc_upper_voltage_v = NS800_MOTOR_DEFAULT_DC_UPPER_VOLTAGE_V;
+    cfg->dc_lower_voltage_v = NS800_MOTOR_DEFAULT_DC_LOWER_VOLTAGE_V;
+    cfg->id_ref_a = NS800_MOTOR_DEFAULT_ID_REF_A;
     cfg->max_current_a = NS800_MOTOR_DEFAULT_MAX_CURRENT_A;
     cfg->max_torque_nm = NS800_MOTOR_DEFAULT_MAX_TORQUE_NM;
     cfg->max_speed_rad_s = NS800_MOTOR_DEFAULT_MAX_SPEED_RAD_S;

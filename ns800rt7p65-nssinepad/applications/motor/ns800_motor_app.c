@@ -13,6 +13,7 @@
 
 #include "ns800_adc_background.h"
 #include "ns800_button_app.h"
+#include "ns800_motor_config.h"
 #include "ns800_pwm_app.h"
 
 #ifdef RT_USING_FINSH
@@ -21,11 +22,6 @@
 
 #define NS800_MOTOR_EPWM_BASE                 EPWM2
 #define NS800_MOTOR_EPWM_IRQn                 EPWM2_INT_IRQn
-#define NS800_MOTOR_CONTROL_FREQ_HZ           10000U
-#define NS800_MOTOR_CONTROL_TBPRD             20000U
-#define NS800_MOTOR_ADC_CURRENT_ZERO          (2048.0f)
-#define NS800_MOTOR_ADC_CURRENT_GAIN_A_COUNT  (0.001f)
-#define NS800_MOTOR_MA_TO_A                   (0.001f)
 
 static ns800_motor_config_t motor_cfg;
 static ns800_motor_params_t motor_params;
@@ -109,7 +105,7 @@ static float motor_adc_current(rt_uint16_t raw)
 }
 
 /**
- * @brief 初始化 EPWM2 为 10 kHz 电机控制定时中断。
+ * @brief 初始化 EPWM2 为电机控制定时中断。
  *
  * EPWM2 只作为控制节拍，不输出 PWM；功率 PWM 仍由 EPWM8~13 负责。
  */
