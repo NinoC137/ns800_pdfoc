@@ -39,6 +39,7 @@ extern "C" {
 #define NS800_MOTOR_DEFAULT_MAX_TORQUE_NM          (2.0f)
 #define NS800_MOTOR_DEFAULT_MAX_SPEED_RAD_S        (600.0f)
 #define NS800_MOTOR_DEFAULT_MAX_VOLTAGE_V          (24.0f)
+#define NS800_MOTOR_DEFAULT_MIN_DC_VOLTAGE_V       (1.0f)
 
 #define NS800_MOTOR_ADC_CURRENT_ZERO               (2048.0f)
 #define NS800_MOTOR_ADC_CURRENT_GAIN_A_COUNT       (0.001f)

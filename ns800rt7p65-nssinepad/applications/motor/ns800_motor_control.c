@@ -287,9 +287,8 @@ void ns800_motor_default_config(ns800_motor_config_t *cfg)
                                NS800_MOTOR_DEFAULT_SPEED_KI,
                                cfg->sample_time_s,
                                cfg->max_torque_nm);
-    cfg->svm = svm_svm_default_config();
     cfg->svm.sample_time_s = cfg->sample_time_s;
-    cfg->svm.min_dc_voltage = 1.0f;
+    cfg->svm.min_dc_voltage = NS800_MOTOR_DEFAULT_MIN_DC_VOLTAGE_V;
 }
 
 /**
