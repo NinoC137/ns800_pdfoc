@@ -32,7 +32,7 @@ typedef enum
 {
     /**< 停止输出，控制器不更新有效占空比。 */
     NS800_MOTOR_MODE_STOP = 0,
-    /**< 开环旋转电压矢量输出，默认 12 V peak、50 Hz。 */
+    /**< 开环旋转电压矢量输出，默认 24 V peak、300 rpm。 */
     NS800_MOTOR_MODE_OPEN_LOOP,
     /**< q 轴电流给定模式，作为力矩开环/电流闭环调试入口。 */
     NS800_MOTOR_MODE_TORQUE,
@@ -66,6 +66,8 @@ typedef struct
 {
     /**< 电机极对数。 */
     uint16_t pole_pairs;
+    /**< 定子相电阻，单位 ohm。 */
+    float phase_resistance_ohm;
     /**< 转矩常数，单位 Nm/A。 */
     float torque_constant_nm_a;
     /**< 永磁体磁链，单位 Wb，用于 q 轴前馈。 */
@@ -192,6 +194,7 @@ typedef struct
     svm_dq_f32_t voltage_cmd_dq;
     svm_ab_f32_t voltage_cmd_ab;
     svm_abc_f32_t voltage_cmd_abc;
+    float output_power_w;
     svm_dual_out_t duty;
     uint32_t status;
 } ns800_motor_output_t;
@@ -245,7 +248,7 @@ float ns800_motor_mech_to_elec_angle(const ns800_motor_params_t *params, float t
 /**
  * @brief 执行一拍功率分配无刷电机控制。
  *
- * 开环模式直接生成 12 V 旋转电压矢量；闭环模式执行 Clarke/Park、
+ * 开环模式直接生成 24 V、300 rpm 旋转电压矢量；闭环模式执行 Clarke/Park、
  * 速度 PI、电流 PI、逆 Park 和双端口 SVM。
  *
  * @param state 控制状态，函数会更新 PI 与 NCO。

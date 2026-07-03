@@ -79,8 +79,8 @@ svm_pi_config_t svm_pi_default_outer_voltage(void)
     cfg.integrator_min = -700.0f;
     cfg.integrator_max = 700.0f;
     cfg.limit_output = false;
-    cfg.limit_integrator = false;
-    cfg.anti_windup = false;
+    cfg.limit_integrator = true;
+    cfg.anti_windup = true;
     return cfg;
 }
 
@@ -95,7 +95,7 @@ svm_pi_config_t svm_pi_default_inner_current(void)
     cfg.integrator_min = -700.0f;
     cfg.integrator_max = 700.0f;
     cfg.limit_output = false;
-    cfg.limit_integrator = false;
-    cfg.anti_windup = false;
+    cfg.limit_integrator = true;
+    cfg.anti_windup = true;
     return cfg;
 }

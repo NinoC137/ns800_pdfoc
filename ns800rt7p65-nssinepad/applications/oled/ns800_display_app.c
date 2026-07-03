@@ -8,6 +8,7 @@
 
 #include "ns800_adc_background.h"
 #include "ns800_button_app.h"
+#include "ns800_motor_app.h"
 #include "ns800_sh1106_oled.h"
 
 #include <rtthread.h>
@@ -136,18 +137,24 @@ static void ns800_draw_status_page(void)
 {
     char line[24];
     char num[12];
+    const ns800_motor_app_status_t *motor_status;
     float hv_power;
     float lv_power;
     float total_power;
+    float output_power;
 
     ns800_display_sample_power(&hv_power, &lv_power, &total_power);
+    motor_status = ns800_motor_app_get_status();
+    output_power = motor_status->last_output.output_power_w;
 
     ns800_sh1106_oled_clear();
-    ns800_sh1106_oled_show_string(0, 0, "HVDC P:");
-    ns800_sh1106_oled_show_float(80, 0, hv_power);
+    ns800_sh1106_oled_show_string(0, 0, "HV:");
+    ns800_sh1106_oled_show_float(18, 0, hv_power);
+    ns800_sh1106_oled_show_string(60, 0, "Output P:");
 
-    ns800_sh1106_oled_show_string(0, 16, "LVDC P:");
-    ns800_sh1106_oled_show_float(80, 16, lv_power);
+    ns800_sh1106_oled_show_string(0, 16, "LV:");
+    ns800_sh1106_oled_show_float(18, 16, lv_power);
+    ns800_sh1106_oled_show_float(60, 16, output_power);
 
     ns800_sh1106_oled_show_string(0, 32, "xi:");
     ns800_sh1106_oled_show_float(18, 32, ns800_param_xi);

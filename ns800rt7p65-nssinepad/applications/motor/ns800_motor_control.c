@@ -6,11 +6,13 @@
 
 #include "ns800_motor_control.h"
 
-#define NS800_MOTOR_DEFAULT_POLE_PAIRS            4u
+#define NS800_MOTOR_DEFAULT_POLE_PAIRS            2u
+#define NS800_MOTOR_DEFAULT_OPEN_LOOP_RPM         (300.0f)
+#define NS800_MOTOR_DEFAULT_PHASE_RESISTANCE_OHM  (15.0f)
 #define NS800_MOTOR_DEFAULT_TORQUE_CONSTANT_NM_A  (0.10f)
 #define NS800_MOTOR_DEFAULT_FLUX_WB               (0.02f)
-#define NS800_MOTOR_DEFAULT_LD_H                  (1.0e-3f)
-#define NS800_MOTOR_DEFAULT_LQ_H                  (1.0e-3f)
+#define NS800_MOTOR_DEFAULT_LD_H                  (13.0e-3f)
+#define NS800_MOTOR_DEFAULT_LQ_H                  (13.0e-3f)
 #define NS800_MOTOR_DEFAULT_CURRENT_KP            (2.0f)
 #define NS800_MOTOR_DEFAULT_CURRENT_KI            (800.0f)
 #define NS800_MOTOR_DEFAULT_SPEED_KP              (0.02f)
@@ -18,7 +20,7 @@
 #define NS800_MOTOR_DEFAULT_MAX_CURRENT_A         (20.0f)
 #define NS800_MOTOR_DEFAULT_MAX_TORQUE_NM         (2.0f)
 #define NS800_MOTOR_DEFAULT_MAX_SPEED_RAD_S       (600.0f)
-#define NS800_MOTOR_DEFAULT_MAX_VOLTAGE_V         (12.0f)
+#define NS800_MOTOR_DEFAULT_MAX_VOLTAGE_V         (24.0f)
 #define NS800_MOTOR_RPM_TO_RAD_S                  (0.1047197551f)
 
 /**
@@ -62,6 +64,25 @@ static float motor_clamp(float value, float min_value, float max_value)
 static float motor_positive_limit(float value)
 {
     return (value < 0.0f) ? -value : value;
+}
+
+/**
+ * @brief 用三相电压指令和三相采样电流计算瞬时输出功率。
+ *
+ * @param voltage_abc 三相电压指令，单位 V。
+ * @param current_abc 三相采样电流，单位 A。
+ * @return 三相瞬时功率，单位 W。
+ */
+static float motor_output_power(const svm_abc_f32_t *voltage_abc, const svm_abc_f32_t *current_abc)
+{
+    if ((voltage_abc == 0) || (current_abc == 0))
+    {
+        return 0.0f;
+    }
+
+    return (voltage_abc->a * current_abc->a) +
+           (voltage_abc->b * current_abc->b) +
+           (voltage_abc->c * current_abc->c);
 }
 
 /**
@@ -112,7 +133,9 @@ static bool motor_params_valid(const ns800_motor_params_t *params)
     {
         return false;
     }
-    if ((params->ld_h < 0.0f) || (params->lq_h < 0.0f))
+    if ((params->phase_resistance_ohm < 0.0f) ||
+        (params->ld_h < 0.0f) ||
+        (params->lq_h < 0.0f))
     {
         return false;
     }
@@ -182,6 +205,7 @@ static void motor_clear_output(ns800_motor_output_t *out)
     out->voltage_cmd_abc.a = 0.0f;
     out->voltage_cmd_abc.b = 0.0f;
     out->voltage_cmd_abc.c = 0.0f;
+    out->output_power_w = 0.0f;
     out->duty.upper.ta = 0.0f;
     out->duty.upper.tb = 0.0f;
     out->duty.upper.tc = 0.0f;
@@ -234,6 +258,7 @@ void ns800_motor_default_params(ns800_motor_params_t *params)
     }
 
     params->pole_pairs = NS800_MOTOR_DEFAULT_POLE_PAIRS;
+    params->phase_resistance_ohm = NS800_MOTOR_DEFAULT_PHASE_RESISTANCE_OHM;
     params->torque_constant_nm_a = NS800_MOTOR_DEFAULT_TORQUE_CONSTANT_NM_A;
     params->flux_wb = NS800_MOTOR_DEFAULT_FLUX_WB;
     params->ld_h = NS800_MOTOR_DEFAULT_LD_H;
@@ -244,7 +269,7 @@ void ns800_motor_default_params(ns800_motor_params_t *params)
 /**
  * @brief 填充默认电机控制配置。
  *
- * 默认上电开环输出为 12 V peak、50 Hz，双端口母线电压固定为 48 V/24 V。
+ * 默认上电开环输出为 24 V peak、300 rpm，双端口母线电压固定为 48 V/24 V。
  *
  * @param cfg 输出配置指针。
  */
@@ -256,8 +281,9 @@ void ns800_motor_default_config(ns800_motor_config_t *cfg)
     }
 
     cfg->sample_time_s = NS800_MOTOR_CONTROL_PERIOD_S;
-    cfg->open_loop_freq_hz = 50.0f;
-    cfg->open_loop_voltage_v = 12.0f;
+    cfg->open_loop_freq_hz = (NS800_MOTOR_DEFAULT_OPEN_LOOP_RPM / 60.0f) *
+                             (float)NS800_MOTOR_DEFAULT_POLE_PAIRS;
+    cfg->open_loop_voltage_v = 24.0f;
     cfg->dc_upper_voltage_v = 48.0f;
     cfg->dc_lower_voltage_v = 24.0f;
     cfg->id_ref_a = 0.0f;
@@ -445,6 +471,7 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
         out->voltage_cmd_ab.alpha = cfg->open_loop_voltage_v * sc.cos_theta;
         out->voltage_cmd_ab.beta = cfg->open_loop_voltage_v * sc.sin_theta;
         svm_inverse_clarke(&out->voltage_cmd_ab, &out->voltage_cmd_abc);
+        out->output_power_w = motor_output_power(&out->voltage_cmd_abc, &in->sample.phase_current_abc);
         svm_status = svm_compute_dual(&out->voltage_cmd_ab,
                                       xi,
                                       cfg->dc_upper_voltage_v,
@@ -497,8 +524,10 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
     out->current_error_dq.d = out->current_ref_dq.d - out->current_dq.d;
     out->current_error_dq.q = out->current_ref_dq.q - out->current_dq.q;
 
-    vd_ff = -((float)params->pole_pairs * out->omega_m_rad_s) * params->lq_h * out->current_dq.q;
-    vq_ff = ((float)params->pole_pairs * out->omega_m_rad_s) *
+    vd_ff = (params->phase_resistance_ohm * out->current_dq.d) -
+            (((float)params->pole_pairs * out->omega_m_rad_s) * params->lq_h * out->current_dq.q);
+    vq_ff = (params->phase_resistance_ohm * out->current_dq.q) +
+            ((float)params->pole_pairs * out->omega_m_rad_s) *
             ((params->ld_h * out->current_dq.d) + params->flux_wb);
 
     out->voltage_cmd_dq.d = svm_pi_update(&state->current_d,
@@ -516,6 +545,7 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
 
     svm_inverse_park(&out->voltage_cmd_dq, &sc, &out->voltage_cmd_ab);
     svm_inverse_clarke(&out->voltage_cmd_ab, &out->voltage_cmd_abc);
+    out->output_power_w = motor_output_power(&out->voltage_cmd_abc, &in->sample.phase_current_abc);
     svm_status = svm_compute_dual(&out->voltage_cmd_ab,
                                   xi,
                                   cfg->dc_upper_voltage_v,

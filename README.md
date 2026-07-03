@@ -270,7 +270,7 @@ extern volatile rt_int32_t ns800_param_force_ma;
 
 ```text
 xi    = 0.5
-speed = 2000
+speed = 300
 F     = 500 mA
 ```
 

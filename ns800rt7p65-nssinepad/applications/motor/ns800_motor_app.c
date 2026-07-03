@@ -318,7 +318,7 @@ static int motor_ol_cmd(int argc, char **argv)
     RT_UNUSED(argv);
 
     ns800_motor_app_set_mode(NS800_MOTOR_MODE_OPEN_LOOP);
-    rt_kprintf("motor open-loop: 12V peak, 50Hz, hv=48V, lv=24V\r\n");
+    rt_kprintf("motor open-loop: 24V peak, 300rpm, hv=48V, lv=24V\r\n");
     return 0;
 }
 
@@ -389,6 +389,9 @@ static int motor_status_cmd(int argc, char **argv)
                (int)(out->duty.lower.ta * 1000.0f),
                (int)(out->duty.lower.tb * 1000.0f),
                (int)(out->duty.lower.tc * 1000.0f));
+    rt_kprintf("output power=%d.%02d W\r\n",
+               (int)out->output_power_w,
+               (int)(motor_abs(out->output_power_w - (float)((int)out->output_power_w)) * 100.0f));
 
     return 0;
 }
