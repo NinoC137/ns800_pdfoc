@@ -30,6 +30,16 @@ typedef struct
     volatile rt_uint32_t feedback_miss_count;
     /**< 最近一次电机控制状态位。 */
     volatile rt_uint32_t fault_flags;
+    /**< guard 线程已锁存并处理的故障事件位。 */
+    volatile rt_uint32_t guard_fault_flags;
+    /**< guard 最近一次处理故障事件时的系统 tick。 */
+    volatile rt_uint32_t guard_action_tick;
+    /**< 遥测 ISR 侧成功写入的帧数。 */
+    volatile rt_uint32_t telemetry_produced_count;
+    /**< 遥测线程已消费的帧数。 */
+    volatile rt_uint32_t telemetry_consumed_count;
+    /**< 遥测 ringbuffer 空间不足而丢弃的帧数。 */
+    volatile rt_uint32_t telemetry_dropped_count;
     /**< 最近读取到的 ADC 帧序号。 */
     volatile rt_uint32_t adc_seq;
     /**< 当前电机控制模式。 */
