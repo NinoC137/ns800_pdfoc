@@ -29,7 +29,7 @@ static volatile rt_uint32_t button_reset_count = 0U;
 
 /*
 GPIO17--S1--f--
-GPIO15--S7--RST
+GPIO15--S7--mode
 GPIO13--S2--F++
 GPIO18--S3--S--
 GPIO16--S4--S++
@@ -45,7 +45,7 @@ typedef enum
     NS800_BTN_SPEED_DEC,
     NS800_BTN_FORCE_INC,
     NS800_BTN_FORCE_DEC,
-    NS800_BTN_RESET,
+    NS800_BTN_MODE_TOGGLE,
     NS800_BTN_IO12_13_TOGGLE,
 } ns800_button_id_t;
 
@@ -63,7 +63,7 @@ static const struct ns800_button_pin button_pins[NS800_BUTTON_COUNT] =
     {GPIOA, GPIO_PIN_18}, /* S3: S-- */
     {GPIOA, GPIO_PIN_13}, /* S2: F++ */
     {GPIOA, GPIO_PIN_17}, /* S1: F-- */
-    {GPIOA, GPIO_PIN_15}, /* S7: RST */
+    {GPIOA, GPIO_PIN_15}, /* S7: UART/button mode toggle */
     {GPIOB, GPIO_PIN_9},  /* IO12/13 UART/button mode toggle */
 };
 
@@ -112,6 +112,20 @@ static void ns800_io12_13_to_buttons(void)
     GPIO_setDirectionMode(GPIO_13, GPIO_DIR_MODE_IN);
 
     io12_13_uart_mode = RT_FALSE;
+}
+
+static void ns800_io12_13_toggle(void)
+{
+    if (io12_13_uart_mode == RT_TRUE)
+    {
+        rt_kprintf("change to button mode\r\n");
+        ns800_io12_13_to_buttons();
+    }
+    else
+    {
+        ns800_io12_13_to_uart();
+        rt_kprintf("change to uart mode\r\n");
+    }
 }
 
 /**
@@ -219,20 +233,9 @@ static void ns800_button_click(Button *handle, void *user_data)
     case NS800_BTN_FORCE_DEC:
         ns800_param_force_ma -= NS800_FORCE_STEP_MA;
         break;
-    case NS800_BTN_RESET:
-        ns800_button_app_reset_params();
-        break;
+    case NS800_BTN_MODE_TOGGLE:
     case NS800_BTN_IO12_13_TOGGLE:
-        if (io12_13_uart_mode == RT_TRUE)
-        {
-            rt_kprintf("change to button mode\r\n");
-            ns800_io12_13_to_buttons();
-        }
-        else
-        {
-            ns800_io12_13_to_uart();
-            rt_kprintf("change to uart mode\r\n");
-        }
+        ns800_io12_13_toggle();
         break;
     default:
         break;
@@ -247,7 +250,7 @@ static void ns800_button_init_all(void)
     rt_uint32_t i;
 
     ns800_button_gpio_init();
-    ns800_io12_13_to_buttons();
+    ns800_io12_13_to_uart();
     for (i = 0U; i < NS800_BUTTON_COUNT; i++)
     {
         button_init(&buttons[i], ns800_button_read_level, 0U, (uint8_t)i);
