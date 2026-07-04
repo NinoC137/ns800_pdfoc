@@ -12,6 +12,8 @@
 
 #include "gpio.h"
 #include "multi_button.h"
+#include "svm_config.h"
+#include "svm_power_alloc.h"
 
 #define NS800_BUTTON_COUNT          8U
 #define NS800_BUTTON_THREAD_STACK   1024U
@@ -22,7 +24,7 @@
 #define NS800_SPEED_STEP            100
 #define NS800_FORCE_STEP_MA         50
 
-volatile float ns800_param_xi = 0.5f;
+volatile float ns800_param_xi = SVM_CLAMP_DEFAULT_POWER_FACTOR_CONST(SVM_DEFAULT_POWER_FACTOR);
 volatile rt_int32_t ns800_param_speed = 300;
 volatile rt_int32_t ns800_param_force_ma = 500;
 static volatile rt_uint32_t button_reset_count = 0U;
@@ -135,7 +137,7 @@ static void ns800_io12_13_toggle(void)
  */
 void ns800_button_app_reset_params(void)
 {
-    ns800_param_xi = 0.5f;
+    ns800_param_xi = svm_clamp_power_factor(SVM_DEFAULT_POWER_FACTOR);
     ns800_param_speed = 300;
     ns800_param_force_ma = 500;
     button_reset_count++;
@@ -213,10 +215,12 @@ static void ns800_button_click(Button *handle, void *user_data)
         if(io12_13_uart_mode == RT_FALSE)
         {
             ns800_param_xi += NS800_XI_STEP;
+            ns800_param_xi = svm_clamp_power_factor(ns800_param_xi);
         }
         break;
     case NS800_BTN_XI_DEC:
         ns800_param_xi -= NS800_XI_STEP;
+        ns800_param_xi = svm_clamp_power_factor(ns800_param_xi);
         break;
     case NS800_BTN_SPEED_INC:
         ns800_param_speed += NS800_SPEED_STEP;

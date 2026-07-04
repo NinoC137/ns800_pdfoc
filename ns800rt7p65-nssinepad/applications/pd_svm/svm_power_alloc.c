@@ -43,13 +43,13 @@ float svm_clamp_unit(float x)
     return svm_clamp(x, 0.0f, 1.0f);
 }
 
-static float svm_clamp_power_factor(float power_factor)
+float svm_clamp_power_factor(float power_factor)
 {
     float lower;
     float upper;
 
-    lower = svm_clamp_unit(SVM_DEFAULT_POWER_SPLIT_XI_MIN);
-    upper = svm_clamp_unit(SVM_DEFAULT_POWER_SPLIT_XI_MAX);
+    lower = SVM_DEFAULT_POWER_SPLIT_XI_CLAMP_LOWER;
+    upper = SVM_DEFAULT_POWER_SPLIT_XI_CLAMP_UPPER;
 
     return svm_clamp(power_factor, lower, upper);
 }

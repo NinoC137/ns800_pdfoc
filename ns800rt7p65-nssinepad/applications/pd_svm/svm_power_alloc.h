@@ -20,6 +20,7 @@ typedef struct {
 
 svm_svm_config_t svm_svm_default_config(void);
 float svm_clamp_unit(float x);
+float svm_clamp_power_factor(float power_factor);
 void svm_power_split(const svm_ab_f32_t *u_ab, float power_factor, svm_split_ab_f32_t *split);
 uint8_t svm_sector_from_ab(const svm_ab_f32_t *u_ab);
 svm_status_t svm_compute_port(const svm_ab_f32_t *u_ab,

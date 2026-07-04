@@ -13,6 +13,7 @@
 
 #include "ns800_adc_background.h"
 #include "ns800_pwm_app.h"
+#include "svm_config.h"
 
 #define NS800_POWER_CONTROL_EPWM_BASE          EPWM2
 #define NS800_POWER_CONTROL_EPWM_IRQn          EPWM2_INT_IRQn
@@ -90,7 +91,7 @@ int ns800_power_control_start(void)
     svm_control_default_config(&power_cfg);
     power_cfg.sample_time_s = 1.0e-4f;
     power_cfg.output_frequency_hz = 50.0f;
-    power_cfg.power_factor = 0.5f;
+    power_cfg.power_factor = SVM_DEFAULT_POWER_FACTOR;
     power_cfg.svm.sample_time_s = 1.0e-4f;
     power_cfg.svm.min_dc_voltage = 1.0f;
     svm_control_init(&power_state, &power_cfg);

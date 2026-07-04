@@ -12,7 +12,7 @@
 void svm_control_default_config(svm_control_config_t *cfg)
 {
     if (cfg == 0) return;
-    cfg->power_factor = 0.5f;
+    cfg->power_factor = SVM_DEFAULT_POWER_FACTOR;
     cfg->ud_ref = SVM_DEFAULT_UD_REF;
     cfg->uq_ref = SVM_DEFAULT_UQ_REF;
     cfg->sample_time_s = SVM_CONTROL_PERIOD_S;

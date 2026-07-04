@@ -30,7 +30,8 @@ int ns800_button_app_start(void);
 /**
  * @brief 将按键控制参数恢复默认值。
  *
- * 默认值为 xi=0.5、speed=300 rpm、F=500 mA，并递增 reset 事件计数。
+ * 默认 xi 为低压端口功率输出为 0 的功率分配点，speed=300 rpm、F=500 mA。
+ * 同时递增 reset 事件计数。
  */
 void ns800_button_app_reset_params(void);
 
