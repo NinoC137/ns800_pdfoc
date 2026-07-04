@@ -43,23 +43,12 @@ float svm_clamp_unit(float x)
     return svm_clamp(x, 0.0f, 1.0f);
 }
 
-float svm_clamp_power_factor(float power_factor)
-{
-    float lower;
-    float upper;
-
-    lower = SVM_DEFAULT_POWER_SPLIT_XI_CLAMP_LOWER;
-    upper = SVM_DEFAULT_POWER_SPLIT_XI_CLAMP_UPPER;
-
-    return svm_clamp(power_factor, lower, upper);
-}
-
 void svm_power_split(const svm_ab_f32_t *u_ab, float power_factor, svm_split_ab_f32_t *split)
 {
     float k;
 
     if ((u_ab == 0) || (split == 0)) return;
-    k = svm_clamp_power_factor(power_factor);
+    k = svm_clamp_unit(power_factor);
     split->upper.alpha = (1.0f - k) * u_ab->alpha;
     split->upper.beta = (1.0f - k) * u_ab->beta;
     split->lower.alpha = k * u_ab->alpha;

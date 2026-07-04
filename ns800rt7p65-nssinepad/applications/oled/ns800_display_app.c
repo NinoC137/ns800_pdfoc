@@ -11,7 +11,6 @@
 #include "ns800_button_app.h"
 #include "ns800_motor_app.h"
 #include "ns800_sh1106_oled.h"
-#include "svm_power_alloc.h"
 
 #include <rtthread.h>
 
@@ -120,12 +119,10 @@ static void ns800_draw_status_page(void)
     float lv_power;
     float total_power;
     float output_power;
-    float display_xi;
 
     ns800_display_sample_power(&hv_power, &lv_power, &total_power);
     motor_status = ns800_motor_app_get_status();
     output_power = motor_status->last_output.output_power_w;
-    display_xi = svm_clamp_power_factor(ns800_param_xi);
 
     ns800_sh1106_oled_clear();
     ns800_sh1106_oled_show_string(0, 0, "HV:");
@@ -137,7 +134,7 @@ static void ns800_draw_status_page(void)
     ns800_sh1106_oled_show_float(60, 16, output_power);
 
     ns800_sh1106_oled_show_string(0, 32, "xi:");
-    ns800_sh1106_oled_show_float(18, 32, display_xi);
+    ns800_sh1106_oled_show_float(18, 32, ns800_param_xi);
     ns800_sh1106_oled_show_string(60, 32, "TP:");
     ns800_sh1106_oled_show_float(78, 32, total_power);
 
