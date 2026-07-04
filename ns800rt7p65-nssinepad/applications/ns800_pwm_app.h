@@ -8,6 +8,7 @@
 #define __NS800_PWM_APP_H__
 
 #include <rtthread.h>
+#include "ns800_motor_config.h"
 #include "svm_types.h"
 
 #ifdef __cplusplus

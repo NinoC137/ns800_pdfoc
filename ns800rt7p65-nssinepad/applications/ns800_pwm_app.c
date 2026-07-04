@@ -77,6 +77,37 @@ static void pwm_gpio_init(const struct ns800_pwm_pin *pin)
     GPIO_setDirectionMode(pin->port, pin->pin, GPIO_DIR_MODE_OUT);
 }
 
+static void pwm_deadband_init(EPWM_TypeDef *epwm)
+{
+    EPWM_setActionQualifierContSWForceShadowMode(epwm, EPWM_AQ_SW_IMMEDIATE_LOAD);
+    EPWM_setActionQualifierContSWForceAction(epwm, EPWM_AQ_OUTPUT_A, EPWM_AQ_SW_DISABLED);
+    EPWM_setActionQualifierContSWForceAction(epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_SW_DISABLED);
+
+    EPWM_setDeadBandControlShadowLoadMode(epwm, EPWM_DB_LOAD_ON_CNTR_ZERO);
+    EPWM_setRisingEdgeDelayCountShadowLoadMode(epwm, EPWM_RED_LOAD_ON_CNTR_ZERO);
+    EPWM_setFallingEdgeDelayCountShadowLoadMode(epwm, EPWM_FED_LOAD_ON_CNTR_ZERO);
+
+    EPWM_setRisingEdgeDeadBandDelayInput(epwm, EPWM_DB_INPUT_EPWMA);
+    EPWM_setFallingEdgeDeadBandDelayInput(epwm, EPWM_DB_INPUT_EPWMA);
+    EPWM_setDeadBandDelayPolarity(epwm, EPWM_DB_RED, EPWM_DB_POLARITY_ACTIVE_HIGH);
+    EPWM_setDeadBandDelayPolarity(epwm, EPWM_DB_FED, EPWM_DB_POLARITY_ACTIVE_LOW);
+    EPWM_setDeadBandOutputSwapMode(epwm, EPWM_DB_OUTPUT_A, false);
+    EPWM_setDeadBandOutputSwapMode(epwm, EPWM_DB_OUTPUT_B, false);
+    EPWM_setRisingEdgeDelayCount(epwm, NS800_MOTOR_PWM_DEADTIME_TICKS);
+    EPWM_setFallingEdgeDelayCount(epwm, NS800_MOTOR_PWM_DEADTIME_TICKS);
+    EPWM_setDeadBandDelayMode(epwm, EPWM_DB_RED, true);
+    EPWM_setDeadBandDelayMode(epwm, EPWM_DB_FED, true);
+}
+
+static void pwm_force_outputs_low(EPWM_TypeDef *epwm)
+{
+    EPWM_setDeadBandDelayMode(epwm, EPWM_DB_RED, false);
+    EPWM_setDeadBandDelayMode(epwm, EPWM_DB_FED, false);
+    EPWM_setActionQualifierContSWForceShadowMode(epwm, EPWM_AQ_SW_IMMEDIATE_LOAD);
+    EPWM_setActionQualifierContSWForceAction(epwm, EPWM_AQ_OUTPUT_A, EPWM_AQ_SW_OUTPUT_LOW);
+    EPWM_setActionQualifierContSWForceAction(epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_SW_OUTPUT_LOW);
+}
+
 static void pwm_module_init(rt_uint32_t index)
 {
     const struct ns800_pwm_module *module = &pwm_modules[index];
@@ -100,10 +131,11 @@ static void pwm_module_init(rt_uint32_t index)
     EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_A, EPWM_AQ_OUTPUT_NO_CHANGE, EPWM_AQ_OUTPUT_ON_TIMEBASE_PERIOD);
     EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_A, EPWM_AQ_OUTPUT_HIGH, EPWM_AQ_OUTPUT_ON_TIMEBASE_UP_CMPA);
     EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_A, EPWM_AQ_OUTPUT_LOW, EPWM_AQ_OUTPUT_ON_TIMEBASE_DOWN_CMPA);
-    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_HIGH, EPWM_AQ_OUTPUT_ON_TIMEBASE_ZERO);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_LOW, EPWM_AQ_OUTPUT_ON_TIMEBASE_ZERO);
     EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_NO_CHANGE, EPWM_AQ_OUTPUT_ON_TIMEBASE_PERIOD);
-    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_LOW, EPWM_AQ_OUTPUT_ON_TIMEBASE_UP_CMPB);
-    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_HIGH, EPWM_AQ_OUTPUT_ON_TIMEBASE_DOWN_CMPB);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_NO_CHANGE, EPWM_AQ_OUTPUT_ON_TIMEBASE_UP_CMPB);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_NO_CHANGE, EPWM_AQ_OUTPUT_ON_TIMEBASE_DOWN_CMPB);
+    pwm_deadband_init(module->epwm);
     EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_A, cmp);
     EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_B, cmp);
     EPWM_setTimeBaseCounterMode(module->epwm, EPWM_COUNTER_MODE_UP_DOWN);
@@ -180,6 +212,7 @@ int ns800_pwm_app_stop(void)
     for (i = 0U; i < NS800_PWM_APP_EPWM_COUNT; i++)
     {
         EPWM_setTimeBaseCounterMode(pwm_modules[i].epwm, EPWM_COUNTER_MODE_STOP_FREEZE);
+        pwm_force_outputs_low(pwm_modules[i].epwm);
         EPWM_setCounterCompareValue(pwm_modules[i].epwm, EPWM_COUNTER_COMPARE_A, NS800_PWM_APP_TBPRD_30KHZ);
         EPWM_setCounterCompareValue(pwm_modules[i].epwm, EPWM_COUNTER_COMPARE_B, NS800_PWM_APP_TBPRD_30KHZ);
     }

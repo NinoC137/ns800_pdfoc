@@ -21,7 +21,7 @@ extern "C" {
 #define NS800_MOTOR_DEFAULT_OPEN_LOOP_FREQ_HZ      ((NS800_MOTOR_DEFAULT_OPEN_LOOP_RPM / 60.0f) * \
                                                     (float)NS800_MOTOR_DEFAULT_POLE_PAIRS)
 #define NS800_MOTOR_DEFAULT_OPEN_LOOP_VOLTAGE_V    (24.0f)
-#define NS800_MOTOR_DEFAULT_DC_UPPER_VOLTAGE_V     (48.0f)
+#define NS800_MOTOR_DEFAULT_DC_UPPER_VOLTAGE_V     (32.0f)
 #define NS800_MOTOR_DEFAULT_DC_LOWER_VOLTAGE_V     (24.0f)
 
 #define NS800_MOTOR_DEFAULT_PHASE_RESISTANCE_OHM   (15.0f)
@@ -44,6 +44,12 @@ extern "C" {
 #define NS800_MOTOR_ADC_CURRENT_ZERO               (2048.0f)
 #define NS800_MOTOR_ADC_CURRENT_GAIN_A_COUNT       (0.001f)
 #define NS800_MOTOR_MA_TO_A                        (0.001f)
+
+#define NS800_MOTOR_PWM_TBCLK_HZ                   NS800_MOTOR_EPWM_TBCLK_HZ
+#define NS800_MOTOR_PWM_DEADTIME_NS                2000U
+#define NS800_MOTOR_PWM_DEADTIME_TICKS             ((rt_uint16_t)(((rt_uint64_t)NS800_MOTOR_PWM_TBCLK_HZ * \
+                                                                    NS800_MOTOR_PWM_DEADTIME_NS + 999999999ULL) / \
+                                                                   1000000000ULL))
 
 #ifdef __cplusplus
 }

@@ -254,7 +254,7 @@ void ns800_motor_default_params(ns800_motor_params_t *params)
 /**
  * @brief 填充默认电机控制配置。
  *
- * 默认上电开环输出为 24 V peak、300 rpm，双端口母线电压固定为 48 V/24 V。
+ * 默认上电开环输出为 24 V peak、300 rpm，双端口母线电压固定为 32 V/24 V。
  *
  * @param cfg 输出配置指针。
  */

@@ -85,6 +85,7 @@ static int ns800_adc_bg_thread_start(void)
 static void ns800_motor_ctrl_thread_entry(void *parameter)
 {
     RT_UNUSED(parameter);
+    ns800_motor_app_set_mode(NS800_MOTOR_MODE_OPEN_LOOP);
     ns800_motor_app_start();
     while (1)
     {

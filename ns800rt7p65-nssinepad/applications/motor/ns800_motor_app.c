@@ -314,7 +314,7 @@ static int motor_ol_cmd(int argc, char **argv)
     RT_UNUSED(argv);
 
     ns800_motor_app_set_mode(NS800_MOTOR_MODE_OPEN_LOOP);
-    rt_kprintf("motor open-loop: 24V peak, 300rpm, hv=48V, lv=24V\r\n");
+    rt_kprintf("motor open-loop: 24V peak, 300rpm, hv=32V, lv=24V\r\n");
     return 0;
 }
 
