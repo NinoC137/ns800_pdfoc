@@ -22,7 +22,7 @@
 #define NS800_SPEED_STEP            100
 #define NS800_FORCE_STEP_MA         50
 
-volatile float ns800_param_xi = 0.5f;
+volatile float ns800_param_xi = 0.63f;
 volatile rt_int32_t ns800_param_speed = 300;
 volatile rt_int32_t ns800_param_force_ma = 500;
 static volatile rt_uint32_t button_reset_count = 0U;
@@ -135,7 +135,7 @@ static void ns800_io12_13_toggle(void)
  */
 void ns800_button_app_reset_params(void)
 {
-    ns800_param_xi = 0.5f;
+    ns800_param_xi = 0.63f;
     ns800_param_speed = 300;
     ns800_param_force_ma = 500;
     button_reset_count++;

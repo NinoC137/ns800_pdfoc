@@ -6,6 +6,8 @@
 
 #include "ns800_motor_app.h"
 
+#include <stdlib.h>
+
 #include <board.h>
 
 #include "epwm.h"
@@ -24,6 +26,11 @@
 
 #define NS800_MOTOR_EPWM_BASE                 EPWM2
 #define NS800_MOTOR_EPWM_IRQn                 EPWM2_INT_IRQn
+#define NS800_MOTOR_WAVE_THREAD_STACK         1024U
+#define NS800_MOTOR_WAVE_THREAD_PRIO          20U
+#define NS800_MOTOR_WAVE_THREAD_TICK          10U
+#define NS800_MOTOR_WAVE_DEFAULT_PERIOD_MS    1U
+#define NS800_MOTOR_WAVE_MAX_PERIOD_MS        1000U
 
 static ns800_motor_config_t motor_cfg;
 static ns800_motor_params_t motor_params;
@@ -34,6 +41,9 @@ static volatile rt_bool_t motor_reset_pending = RT_FALSE;
 static volatile ns800_motor_mode_t motor_mode = NS800_MOTOR_MODE_OPEN_LOOP;
 static rt_uint32_t motor_last_adc_seq = 0U;
 static rt_uint32_t motor_last_reset_count = 0U;
+static rt_thread_t motor_wave_thread = RT_NULL;
+static volatile rt_bool_t motor_wave_enabled = RT_FALSE;
+static volatile rt_uint32_t motor_wave_period_ms = NS800_MOTOR_WAVE_DEFAULT_PERIOD_MS;
 
 /**
  * @brief 获取转子机械角和机械角速度的默认弱实现。
@@ -90,6 +100,105 @@ static float motor_clamp(float value, float min_value, float max_value)
     }
 
     return value;
+}
+
+static int motor_float_to_i32(float value)
+{
+    if (value >= 0.0f)
+    {
+        return (int)(value + 0.5f);
+    }
+
+    return (int)(value - 0.5f);
+}
+
+static rt_uint32_t motor_wave_clamp_period(rt_uint32_t period_ms)
+{
+    if (period_ms == 0U)
+    {
+        return NS800_MOTOR_WAVE_DEFAULT_PERIOD_MS;
+    }
+    if (period_ms > NS800_MOTOR_WAVE_MAX_PERIOD_MS)
+    {
+        return NS800_MOTOR_WAVE_MAX_PERIOD_MS;
+    }
+
+    return period_ms;
+}
+
+static void motor_wave_snapshot(svm_dual_out_t *duty, float *hvdc_v, float *lvdc_v, rt_bool_t *running)
+{
+    if ((duty == RT_NULL) || (hvdc_v == RT_NULL) || (lvdc_v == RT_NULL) || (running == RT_NULL))
+    {
+        return;
+    }
+
+    rt_enter_critical();
+    *duty = motor_status.last_output.duty;
+    *hvdc_v = motor_cfg.dc_upper_voltage_v;
+    *lvdc_v = motor_cfg.dc_lower_voltage_v;
+    *running = motor_running;
+    rt_exit_critical();
+}
+
+static void motor_wave_thread_entry(void *parameter)
+{
+    svm_dual_out_t duty;
+    float hvdc_v;
+    float lvdc_v;
+    float va_f;
+    float vb_f;
+    float vc_f;
+    int vab;
+    int vbc;
+    int vca;
+
+    RT_UNUSED(parameter);
+
+    while (1)
+    {
+        rt_bool_t running = RT_FALSE;
+
+        if (motor_wave_enabled == RT_TRUE)
+        {
+            motor_wave_snapshot(&duty, &hvdc_v, &lvdc_v, &running);
+            if (running == RT_TRUE)
+            {
+                va_f = duty.upper.ta * hvdc_v + duty.lower.ta * lvdc_v;
+                vb_f = duty.upper.tb * hvdc_v + duty.lower.tb * lvdc_v;
+                vc_f = duty.upper.tc * hvdc_v + duty.lower.tc * lvdc_v;
+
+                vab = motor_float_to_i32((va_f - vb_f) * 1000.0f);
+                vbc = motor_float_to_i32((vb_f - vc_f) * 1000.0f);
+                vca = motor_float_to_i32((vc_f - va_f) * 1000.0f);
+                rt_kprintf("wave:%d,%d,%d\r\n", vab, vbc, vca);
+            }
+        }
+
+        rt_thread_mdelay(motor_wave_period_ms);
+    }
+}
+
+static int motor_wave_thread_start(void)
+{
+    if (motor_wave_thread != RT_NULL)
+    {
+        return 0;
+    }
+
+    motor_wave_thread = rt_thread_create("m_wave",
+                                         motor_wave_thread_entry,
+                                         RT_NULL,
+                                         NS800_MOTOR_WAVE_THREAD_STACK,
+                                         NS800_MOTOR_WAVE_THREAD_PRIO,
+                                         NS800_MOTOR_WAVE_THREAD_TICK);
+    if (motor_wave_thread == RT_NULL)
+    {
+        return -RT_ERROR;
+    }
+
+    rt_thread_startup(motor_wave_thread);
+    return 0;
 }
 
 /**
@@ -242,6 +351,7 @@ int ns800_motor_app_start(void)
 
     /* 启动无感观测器:与电机控制同步,随后在 EPWM2 ISR 内被持续喂数据。 */
     sl_observer_app_start();
+    motor_wave_thread_start();
     return 0;
 }
 
@@ -388,8 +498,49 @@ static int motor_status_cmd(int argc, char **argv)
     return 0;
 }
 
+/**
+ * @brief FinSH 命令：按 WaveView 协议输出三相线电压。
+ */
+static int motor_wave_cmd(int argc, char **argv)
+{
+    rt_uint32_t period_ms = motor_wave_period_ms;
+
+    if ((argc >= 2) &&
+        ((rt_strcmp(argv[1], "off") == 0) || (rt_strcmp(argv[1], "stop") == 0) ||
+         (rt_strcmp(argv[1], "0") == 0)))
+    {
+        motor_wave_enabled = RT_FALSE;
+        rt_kprintf("motor_wave: off\r\n");
+        return 0;
+    }
+
+    if ((argc >= 3) &&
+        ((rt_strcmp(argv[1], "on") == 0) || (rt_strcmp(argv[1], "start") == 0)))
+    {
+        period_ms = (rt_uint32_t)strtoul(argv[2], RT_NULL, 0);
+    }
+    else if ((argc >= 2) &&
+             ((rt_strcmp(argv[1], "on") != 0) && (rt_strcmp(argv[1], "start") != 0)))
+    {
+        period_ms = (rt_uint32_t)strtoul(argv[1], RT_NULL, 0);
+    }
+
+    motor_wave_period_ms = motor_wave_clamp_period(period_ms);
+    if (motor_wave_thread_start() != 0)
+    {
+        rt_kprintf("motor_wave: thread create failed\r\n");
+        return -RT_ERROR;
+    }
+
+    motor_wave_enabled = RT_TRUE;
+    rt_kprintf("motor_wave: on period=%u ms format=wave:vab,vbc,vca mV\r\n",
+               (unsigned int)motor_wave_period_ms);
+    return 0;
+}
+
 MSH_CMD_EXPORT_ALIAS(motor_ol_cmd, motor_ol, start ns800 motor open-loop test);
 MSH_CMD_EXPORT_ALIAS(motor_speed_cmd, motor_speed, start ns800 motor speed loop);
 MSH_CMD_EXPORT_ALIAS(motor_stop_cmd, motor_stop, stop ns800 motor pwm);
 MSH_CMD_EXPORT_ALIAS(motor_status_cmd, motor_status, show ns800 motor status);
+MSH_CMD_EXPORT_ALIAS(motor_wave_cmd, motor_wave, stream motor line voltage to WaveView);
 #endif
