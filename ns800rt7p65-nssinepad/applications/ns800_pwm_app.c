@@ -94,8 +94,17 @@ static void pwm_cmp_pair_from_unit(float duty_unit, rt_uint16_t *normal_cmp, rt_
     normal_delay = dead_ticks / 2;
     inverted_advance = dead_ticks - normal_delay;
 
-    *normal_cmp = pwm_clamp_cmp((int)ideal_cmp + normal_delay);
-    *inverted_cmp = pwm_clamp_cmp((int)ideal_cmp - inverted_advance);
+    if (duty_unit <= 0.0f) {
+    *normal_cmp = NS800_PWM_APP_TBPRD;
+    *inverted_cmp = NS800_PWM_APP_TBPRD;
+    return;
+    }
+
+    if (duty_unit >= 1.0f) {
+        *normal_cmp = 0U;
+        *inverted_cmp = 0U;
+        return;
+    }
 }
 
 static void pwm_gpio_init(const struct ns800_pwm_pin *pin)
