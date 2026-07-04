@@ -29,6 +29,21 @@ extern "C" {
 #define SVM_DEFAULT_UD_REF             (12.0f)
 #define SVM_DEFAULT_UQ_REF             (0.0f)
 
+#define SVM_DEFAULT_DC_HV_VOLTAGE      (32.0f)
+#define SVM_DEFAULT_DC_LV_VOLTAGE      (24.0f)
+#define SVM_DEFAULT_OUTPUT_VOLTAGE_MAG (SVM_DEFAULT_UD_REF)
+#define SVM_POWER_SPLIT_XI_MIN(v_h, v_l, v_mag) \
+    (1.0f - (((v_h) - (v_l)) / (SVM_SQRT3 * (v_mag))))
+#define SVM_POWER_SPLIT_XI_MAX(v_l, v_mag) \
+    ((v_l) / (SVM_SQRT3 * (v_mag)))
+#define SVM_DEFAULT_POWER_SPLIT_XI_MIN \
+    SVM_POWER_SPLIT_XI_MIN(SVM_DEFAULT_DC_HV_VOLTAGE, \
+                           SVM_DEFAULT_DC_LV_VOLTAGE, \
+                           SVM_DEFAULT_OUTPUT_VOLTAGE_MAG)
+#define SVM_DEFAULT_POWER_SPLIT_XI_MAX \
+    SVM_POWER_SPLIT_XI_MAX(SVM_DEFAULT_DC_LV_VOLTAGE, \
+                           SVM_DEFAULT_OUTPUT_VOLTAGE_MAG)
+
 #define SVM_MIN_DC_VOLTAGE             (0.0f)
 #define SVM_DEFAULT_FREQ_HZ            (50.0f)
 
