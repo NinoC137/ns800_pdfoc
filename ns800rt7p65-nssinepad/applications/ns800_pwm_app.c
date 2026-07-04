@@ -68,6 +68,36 @@ static rt_uint16_t pwm_cmp_from_unit(float duty_unit)
     return (rt_uint16_t)((rt_uint32_t)(NS800_PWM_APP_TBPRD * (1.0f - duty_unit)));
 }
 
+static rt_uint16_t pwm_clamp_cmp(int cmp)
+{
+    if (cmp < 0)
+    {
+        return 0U;
+    }
+    if (cmp > (int)NS800_PWM_APP_TBPRD)
+    {
+        return (rt_uint16_t)NS800_PWM_APP_TBPRD;
+    }
+
+    return (rt_uint16_t)cmp;
+}
+
+static void pwm_cmp_pair_from_unit(float duty_unit, rt_uint16_t *normal_cmp, rt_uint16_t *inverted_cmp)
+{
+    rt_uint16_t ideal_cmp;
+    int dead_ticks;
+    int normal_delay;
+    int inverted_advance;
+
+    ideal_cmp = pwm_cmp_from_unit(duty_unit);
+    dead_ticks = (int)NS800_MOTOR_PWM_DEADTIME_TICKS;
+    normal_delay = dead_ticks / 2;
+    inverted_advance = dead_ticks - normal_delay;
+
+    *normal_cmp = pwm_clamp_cmp((int)ideal_cmp + normal_delay);
+    *inverted_cmp = pwm_clamp_cmp((int)ideal_cmp - inverted_advance);
+}
+
 static void pwm_gpio_init(const struct ns800_pwm_pin *pin)
 {
     GPIO_setPinConfig(pin->port, pin->pin, pin->af);
@@ -188,7 +218,8 @@ int ns800_pwm_app_start(void)
 
 void ns800_pwm_app_write_svm(const svm_dual_out_t *duty)
 {
-    rt_uint16_t cmp;
+    rt_uint16_t normal_cmp;
+    rt_uint16_t inverted_cmp;
 
     if (duty == RT_NULL)
     {
@@ -196,28 +227,28 @@ void ns800_pwm_app_write_svm(const svm_dual_out_t *duty)
     }
 
     /* Phase A: GPIO74/76 upper pair, GPIO75/77 lower pair. */
-    cmp = pwm_cmp_from_unit(duty->upper.ta);
-    EPWM_setCounterCompareValue(EPWM8, EPWM_COUNTER_COMPARE_A, cmp);
-    EPWM_setCounterCompareValue(EPWM9, EPWM_COUNTER_COMPARE_A, cmp);
-    cmp = pwm_cmp_from_unit(duty->lower.ta);
-    EPWM_setCounterCompareValue(EPWM8, EPWM_COUNTER_COMPARE_B, cmp);
-    EPWM_setCounterCompareValue(EPWM9, EPWM_COUNTER_COMPARE_B, cmp);
+    pwm_cmp_pair_from_unit(duty->upper.ta, &normal_cmp, &inverted_cmp);
+    EPWM_setCounterCompareValue(EPWM8, EPWM_COUNTER_COMPARE_A, normal_cmp);
+    EPWM_setCounterCompareValue(EPWM9, EPWM_COUNTER_COMPARE_A, inverted_cmp);
+    pwm_cmp_pair_from_unit(duty->lower.ta, &normal_cmp, &inverted_cmp);
+    EPWM_setCounterCompareValue(EPWM8, EPWM_COUNTER_COMPARE_B, normal_cmp);
+    EPWM_setCounterCompareValue(EPWM9, EPWM_COUNTER_COMPARE_B, inverted_cmp);
 
     /* Phase B: GPIO78/80 upper pair, GPIO79/81 lower pair. */
-    cmp = pwm_cmp_from_unit(duty->upper.tb);
-    EPWM_setCounterCompareValue(EPWM10, EPWM_COUNTER_COMPARE_A, cmp);
-    EPWM_setCounterCompareValue(EPWM11, EPWM_COUNTER_COMPARE_A, cmp);
-    cmp = pwm_cmp_from_unit(duty->lower.tb);
-    EPWM_setCounterCompareValue(EPWM10, EPWM_COUNTER_COMPARE_B, cmp);
-    EPWM_setCounterCompareValue(EPWM11, EPWM_COUNTER_COMPARE_B, cmp);
+    pwm_cmp_pair_from_unit(duty->upper.tb, &normal_cmp, &inverted_cmp);
+    EPWM_setCounterCompareValue(EPWM10, EPWM_COUNTER_COMPARE_A, normal_cmp);
+    EPWM_setCounterCompareValue(EPWM11, EPWM_COUNTER_COMPARE_A, inverted_cmp);
+    pwm_cmp_pair_from_unit(duty->lower.tb, &normal_cmp, &inverted_cmp);
+    EPWM_setCounterCompareValue(EPWM10, EPWM_COUNTER_COMPARE_B, normal_cmp);
+    EPWM_setCounterCompareValue(EPWM11, EPWM_COUNTER_COMPARE_B, inverted_cmp);
 
     /* Phase C: GPIO82/85 upper pair, GPIO83/86 lower pair. */
-    cmp = pwm_cmp_from_unit(duty->upper.tc);
-    EPWM_setCounterCompareValue(EPWM12, EPWM_COUNTER_COMPARE_A, cmp);
-    EPWM_setCounterCompareValue(EPWM13, EPWM_COUNTER_COMPARE_A, cmp);
-    cmp = pwm_cmp_from_unit(duty->lower.tc);
-    EPWM_setCounterCompareValue(EPWM12, EPWM_COUNTER_COMPARE_B, cmp);
-    EPWM_setCounterCompareValue(EPWM13, EPWM_COUNTER_COMPARE_B, cmp);
+    pwm_cmp_pair_from_unit(duty->upper.tc, &normal_cmp, &inverted_cmp);
+    EPWM_setCounterCompareValue(EPWM12, EPWM_COUNTER_COMPARE_A, normal_cmp);
+    EPWM_setCounterCompareValue(EPWM13, EPWM_COUNTER_COMPARE_A, inverted_cmp);
+    pwm_cmp_pair_from_unit(duty->lower.tc, &normal_cmp, &inverted_cmp);
+    EPWM_setCounterCompareValue(EPWM12, EPWM_COUNTER_COMPARE_B, normal_cmp);
+    EPWM_setCounterCompareValue(EPWM13, EPWM_COUNTER_COMPARE_B, inverted_cmp);
 }
 
 int ns800_pwm_app_stop(void)
