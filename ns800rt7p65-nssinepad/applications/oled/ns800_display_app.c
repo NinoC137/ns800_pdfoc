@@ -7,6 +7,7 @@
 #include "ns800_display_app.h"
 
 #include "ns800_adc_background.h"
+#include "ns800_adc_scale.h"
 #include "ns800_button_app.h"
 #include "ns800_motor_app.h"
 #include "ns800_sh1106_oled.h"
@@ -18,15 +19,6 @@
 #define NS800_DISPLAY_THREAD_PRIO   12U
 #define NS800_DISPLAY_THREAD_TICK   10U
 #define NS800_DISPLAY_REFRESH_MS    100U
-#define NS800_DISPLAY_PHASE_I_ZERO  (2048.0f)
-#define NS800_DISPLAY_ADC_VREF      (3.3f)
-#define NS800_DISPLAY_ADC_FULL      (4095.0f)
-#define NS800_DISPLAY_HV_V_GAIN     (1.0f)
-#define NS800_DISPLAY_HV_I_GAIN     (0.001f)
-#define NS800_DISPLAY_LV_V_GAIN     (1.0f)
-#define NS800_DISPLAY_LV_I_GAIN     (0.001f)
-#define NS800_DISPLAY_PHASE_V_GAIN  (1.0f)
-#define NS800_DISPLAY_PHASE_I_GAIN  (0.001f)
 
 static rt_thread_t display_thread = RT_NULL;
 
@@ -80,21 +72,6 @@ static void ns800_append_ma_unit(char *buf, rt_size_t size)
     buf[len] = '\0';
 }
 
-static float ns800_adc_voltage(rt_uint16_t raw, float gain)
-{
-    return ((float)(raw & 0x0fffU)) * NS800_DISPLAY_ADC_VREF * gain / NS800_DISPLAY_ADC_FULL;
-}
-
-static float ns800_adc_bipolar_current(rt_uint16_t raw, float gain)
-{
-    return (((float)(raw & 0x0fffU)) - NS800_DISPLAY_PHASE_I_ZERO) * gain;
-}
-
-static float ns800_adc_unipolar_current(rt_uint16_t raw, float gain)
-{
-    return ((float)(raw & 0x0fffU)) * gain;
-}
-
 static void ns800_display_sample_power(float *hv_power, float *lv_power, float *total_power)
 {
     const rt_uint16_t *frame;
@@ -118,16 +95,16 @@ static void ns800_display_sample_power(float *hv_power, float *lv_power, float *
         return;
     }
 
-    hv_v = ns800_adc_voltage(frame[0], NS800_DISPLAY_HV_V_GAIN);
-    hv_i = ns800_adc_unipolar_current(frame[1], NS800_DISPLAY_HV_I_GAIN);
-    lv_v = ns800_adc_voltage(frame[2], NS800_DISPLAY_LV_V_GAIN);
-    lv_i = ns800_adc_unipolar_current(frame[3], NS800_DISPLAY_LV_I_GAIN);
-    va = ns800_adc_voltage(frame[4], NS800_DISPLAY_PHASE_V_GAIN);
-    ia = ns800_adc_bipolar_current(frame[5], NS800_DISPLAY_PHASE_I_GAIN);
-    vb = ns800_adc_voltage(frame[6], NS800_DISPLAY_PHASE_V_GAIN);
-    ib = ns800_adc_bipolar_current(frame[7], NS800_DISPLAY_PHASE_I_GAIN);
-    vc = ns800_adc_voltage(frame[8], NS800_DISPLAY_PHASE_V_GAIN);
-    ic = ns800_adc_bipolar_current(frame[9], NS800_DISPLAY_PHASE_I_GAIN);
+    hv_v = ns800_adc_dc_voltage(frame[0]);
+    hv_i = ns800_adc_dc_current(frame[1]);
+    lv_v = ns800_adc_dc_voltage(frame[2]);
+    lv_i = ns800_adc_dc_current(frame[3]);
+    va = ns800_adc_ac_voltage(frame[4]);
+    ia = ns800_adc_ac_current(frame[5]);
+    vb = ns800_adc_ac_voltage(frame[6]);
+    ib = ns800_adc_ac_current(frame[7]);
+    vc = ns800_adc_ac_voltage(frame[8]);
+    ic = ns800_adc_ac_current(frame[9]);
 
     *hv_power = hv_v * hv_i;
     *lv_power = lv_v * lv_i;

@@ -12,9 +12,11 @@
 #include "interrupt.h"
 
 #include "ns800_adc_background.h"
+#include "ns800_adc_scale.h"
 #include "ns800_button_app.h"
 #include "ns800_motor_config.h"
 #include "ns800_pwm_app.h"
+#include "sl_observer_app.h"
 
 #ifdef RT_USING_FINSH
 #include "finsh.h"
@@ -91,20 +93,6 @@ static float motor_clamp(float value, float min_value, float max_value)
 }
 
 /**
- * @brief 将 ADC 原始值转换为相电流。
- *
- * 当前为占位标定：2048 作为零点，1 count = 1 mA。后续应按硬件采样比例更新。
- *
- * @param raw ADC 原始采样值。
- * @return 相电流，单位 A。
- */
-static float motor_adc_current(rt_uint16_t raw)
-{
-    return (((float)(raw & 0x0fffU)) - NS800_MOTOR_ADC_CURRENT_ZERO) *
-           NS800_MOTOR_ADC_CURRENT_GAIN_A_COUNT;
-}
-
-/**
  * @brief 初始化 EPWM2 为电机控制定时中断。
  *
  * EPWM2 只作为控制节拍，不输出 PWM；功率 PWM 仍由 EPWM8~13 负责。
@@ -155,9 +143,9 @@ static void ns800_motor_fill_input(ns800_motor_input_t *in)
 
     if (frame != RT_NULL)
     {
-        in->sample.phase_current_abc.a = motor_adc_current(frame[5]);
-        in->sample.phase_current_abc.b = motor_adc_current(frame[7]);
-        in->sample.phase_current_abc.c = motor_adc_current(frame[9]);
+        in->sample.phase_current_abc.a = ns800_adc_ac_current(frame[5]);
+        in->sample.phase_current_abc.b = ns800_adc_ac_current(frame[7]);
+        in->sample.phase_current_abc.c = ns800_adc_ac_current(frame[9]);
     }
     else
     {
@@ -215,6 +203,11 @@ void ns800_motor_isr(void)
 
     ns800_pwm_app_write_svm(&motor_status.last_output.duty);
 
+    /* 无感观测器单拍更新:喂入本拍指令电压矢量与采样相电流。
+     * 仅只读估计电角度/转速,不介入控制;放在 PWM 写入之后以优先保证控制输出时序。 */
+    sl_observer_app_update(&motor_status.last_output.voltage_cmd_ab,
+                           &in.sample.phase_current_abc);
+
     RT_UNUSED(status);
     EPWM_clearEventTriggerInterruptFlag(NS800_MOTOR_EPWM_BASE);
     __DSB();
@@ -246,6 +239,9 @@ int ns800_motor_app_start(void)
 
     motor_running = RT_TRUE;
     motor_status.mode = motor_mode;
+
+    /* 启动无感观测器:与电机控制同步,随后在 EPWM2 ISR 内被持续喂数据。 */
+    sl_observer_app_start();
     return 0;
 }
 

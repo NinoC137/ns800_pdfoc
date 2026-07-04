@@ -41,8 +41,6 @@ extern "C" {
 #define NS800_MOTOR_DEFAULT_MAX_VOLTAGE_V          (24.0f)
 #define NS800_MOTOR_DEFAULT_MIN_DC_VOLTAGE_V       (1.0f)
 
-#define NS800_MOTOR_ADC_CURRENT_ZERO               (2048.0f)
-#define NS800_MOTOR_ADC_CURRENT_GAIN_A_COUNT       (0.001f)
 #define NS800_MOTOR_MA_TO_A                        (0.001f)
 
 #define NS800_MOTOR_PWM_TBCLK_HZ                   NS800_MOTOR_EPWM_TBCLK_HZ

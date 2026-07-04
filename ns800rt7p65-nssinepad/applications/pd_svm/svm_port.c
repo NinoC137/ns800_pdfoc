@@ -9,6 +9,7 @@
 #include <rtthread.h>
 
 #include "ns800_adc_background.h"
+#include "ns800_adc_scale.h"
 #include "ns800_pwm_app.h"
 
 void svm_port_enter_critical(void)
@@ -31,16 +32,16 @@ bool svm_port_read_adc(svm_adc_sample_t *sample)
     frame = ns800_adc_background_latest(&seq);
     if (frame == RT_NULL) return false;
 
-    sample->ac_voltage_abc.a = (float)frame[4];
-    sample->ac_voltage_abc.b = (float)frame[6];
-    sample->ac_voltage_abc.c = (float)frame[8];
-    sample->ac_current_abc.a = (float)frame[5];
-    sample->ac_current_abc.b = (float)frame[7];
-    sample->ac_current_abc.c = (float)frame[9];
-    sample->dc_upper_voltage = (float)frame[0];
-    sample->dc_upper_current = (float)frame[1];
-    sample->dc_lower_voltage = (float)frame[2];
-    sample->dc_lower_current = (float)frame[3];
+    sample->ac_voltage_abc.a = ns800_adc_ac_voltage(frame[4]);
+    sample->ac_voltage_abc.b = ns800_adc_ac_voltage(frame[6]);
+    sample->ac_voltage_abc.c = ns800_adc_ac_voltage(frame[8]);
+    sample->ac_current_abc.a = ns800_adc_ac_current(frame[5]);
+    sample->ac_current_abc.b = ns800_adc_ac_current(frame[7]);
+    sample->ac_current_abc.c = ns800_adc_ac_current(frame[9]);
+    sample->dc_upper_voltage = ns800_adc_dc_voltage(frame[0]);
+    sample->dc_upper_current = ns800_adc_dc_current(frame[1]);
+    sample->dc_lower_voltage = ns800_adc_dc_voltage(frame[2]);
+    sample->dc_lower_current = ns800_adc_dc_current(frame[3]);
     (void)seq;
     return true;
 }
