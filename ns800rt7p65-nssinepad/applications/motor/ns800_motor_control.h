@@ -176,8 +176,8 @@ typedef struct
 /**
  * @brief 单拍电机控制输出和诊断量。
  *
- * duty 直接映射到 EPWM8~13：A 相 EPWM8/9，B 相 EPWM10/11，
- * C 相 EPWM12/13。
+ * duty 直接映射到 EPWM8~13：A 相 GPIO74/76 与 GPIO75/77 互补，
+ * B 相 GPIO78/80 与 GPIO79/81 互补，C 相 GPIO82/85 与 GPIO83/86 互补。
  */
 typedef struct
 {
