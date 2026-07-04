@@ -35,12 +35,12 @@ extern "C" {
 #define SL_OBS_PERIOD_S           (1.0e-4f)                  /**< 观测器离散步长,单位 s(与 EPWM2 控制中断同步)。 */
 /** @} */
 
-/** @name 占位电机电气参数(实测后须整定) */
+/** @name 电机电气参数(实测后须整定) */
 /** @{ */
-#define SL_OBS_DEFAULT_RS_OHM     (0.5f)                     /**< 定子相电阻占位值,单位 ohm。 */
-#define SL_OBS_DEFAULT_LS_H       (1.0e-3f)                  /**< 定子相电感占位值,单位 H(表贴式取 Ld=Lq)。 */
-#define SL_OBS_DEFAULT_FLUX_WB    (0.02f)                    /**< 永磁体磁链占位值,单位 Wb。 */
-#define SL_OBS_DEFAULT_POLE_PAIRS (4u)                       /**< 极对数占位值。 */
+#define SL_OBS_DEFAULT_RS_OHM     (13.0f)                     /**< 定子相电阻,单位 ohm。 */
+#define SL_OBS_DEFAULT_LS_H       (13.0e-3f)                  /**< 定子相电感,单位 H(表贴式取 Ld=Lq)。 */
+#define SL_OBS_DEFAULT_FLUX_WB    (0.02f)                    /**< 永磁体磁链,单位 Wb。 */
+#define SL_OBS_DEFAULT_POLE_PAIRS (2u)                       /**< 极对数。 */
 /** @} */
 
 /** @name 滑模电流观测器增益 */
@@ -60,7 +60,7 @@ extern "C" {
  * 抗抖振核心参数:开关函数用连续的 s/(|s|+delta) 取代硬 sign(s)。delta 越大越平滑
  * 但带宽损失越多;delta 越小越接近理想滑模但抖振越强。默认 1.0 A。
  */
-#define SL_OBS_DEFAULT_BOUNDARY_DELTA (1.0f)
+#define SL_OBS_DEFAULT_BOUNDARY_DELTA (0.08f)
 /** @} */
 
 /** @name 反电动势低通滤波 */
@@ -86,8 +86,8 @@ extern "C" {
  * 环路自然频率 wn≈sqrt(ki),阻尼 zeta≈kp/(2*sqrt(ki))。默认 kp=150、ki=8000
  * 对应 wn≈89 rad/s、zeta≈0.84。
  */
-#define SL_OBS_DEFAULT_PLL_KP     (150.0f)
-#define SL_OBS_DEFAULT_PLL_KI     (8000.0f)                  /**< @see SL_OBS_DEFAULT_PLL_KP */
+#define SL_OBS_DEFAULT_PLL_KP     (15.0f)
+#define SL_OBS_DEFAULT_PLL_KI     (800.0f)                  /**< @see SL_OBS_DEFAULT_PLL_KP */
 
 /** @brief PLL 输出(估计电角速度)对称限幅,单位 rad/s。 */
 #define SL_OBS_DEFAULT_OMEGA_MAX_RAD_S (3000.0f)
