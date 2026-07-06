@@ -176,8 +176,8 @@ typedef struct
 /**
  * @brief 单拍电机控制输出和诊断量。
  *
- * duty 直接映射到 EPWM8~13：A 相 GPIO74/76 与 GPIO75/77 互补，
- * B 相 GPIO78/80 与 GPIO79/81 互补，C 相 GPIO82/85 与 GPIO83/86 互补。
+ * duty 直接映射到 EPWM8~13：每个 EPWM 模块的 A/B 输出为一对硬件互补 PWM。
+ * A 相 EPWM8 为 upper、EPWM9 为 lower，B 相 EPWM10/11，C 相 EPWM12/13。
  */
 typedef struct
 {

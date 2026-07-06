@@ -95,10 +95,11 @@ applications/ns800_pwm_app.h
 功能说明：
 
 - 直接调用 SDK EPWM/GPIO API 配置 EPWM8-EPWM13。
-- 开关频率为 30 kHz。
-- 时基周期为 `NS800_PWM_APP_TBPRD_30KHZ = 6667`。
+- 开关频率为 `NS800_PWM_APP_FREQ_HZ = 10 kHz`。
+- 时基周期为 `NS800_PWM_APP_TBPRD = 20000`。
 - 默认占空比为 50%。
-- 每个 EPWM 模块的 A/B 输出作为一对输出配置。
+- 每个 EPWM 模块的 A/B 输出作为一对互补 PWM 通道。
+- A/B 互补与死区由 EPWM 硬件 dead-band 生成，软件只写入该模块 compare 值。
 
 引脚映射：
 

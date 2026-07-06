@@ -68,45 +68,6 @@ static rt_uint16_t pwm_cmp_from_unit(float duty_unit)
     return (rt_uint16_t)((rt_uint32_t)(NS800_PWM_APP_TBPRD * (1.0f - duty_unit)));
 }
 
-static rt_uint16_t pwm_clamp_cmp(int cmp)
-{
-    if (cmp < 0)
-    {
-        return 0U;
-    }
-    if (cmp > (int)NS800_PWM_APP_TBPRD)
-    {
-        return (rt_uint16_t)NS800_PWM_APP_TBPRD;
-    }
-
-    return (rt_uint16_t)cmp;
-}
-
-static void pwm_cmp_pair_from_unit(float duty_unit, rt_uint16_t *normal_cmp, rt_uint16_t *inverted_cmp)
-{
-    rt_uint16_t ideal_cmp;
-    int dead_ticks;
-    int normal_delay;
-    int inverted_advance;
-
-    ideal_cmp = pwm_cmp_from_unit(duty_unit);
-    dead_ticks = (int)NS800_MOTOR_PWM_DEADTIME_TICKS;
-    normal_delay = dead_ticks / 2;
-    inverted_advance = dead_ticks - normal_delay;
-
-    if (duty_unit <= 0.0f) {
-    *normal_cmp = NS800_PWM_APP_TBPRD;
-    *inverted_cmp = NS800_PWM_APP_TBPRD;
-    return;
-    }
-
-    if (duty_unit >= 1.0f) {
-        *normal_cmp = 0U;
-        *inverted_cmp = 0U;
-        return;
-    }
-}
-
 static void pwm_gpio_init(const struct ns800_pwm_pin *pin)
 {
     GPIO_setPinConfig(pin->port, pin->pin, pin->af);
@@ -116,48 +77,26 @@ static void pwm_gpio_init(const struct ns800_pwm_pin *pin)
     GPIO_setDirectionMode(pin->port, pin->pin, GPIO_DIR_MODE_OUT);
 }
 
-static void pwm_output_polarity_init(EPWM_TypeDef *epwm, bool inverted)
+static void pwm_deadband_init(EPWM_TypeDef *epwm)
 {
     EPWM_setActionQualifierContSWForceShadowMode(epwm, EPWM_AQ_SW_IMMEDIATE_LOAD);
     EPWM_setActionQualifierContSWForceAction(epwm, EPWM_AQ_OUTPUT_A, EPWM_AQ_SW_DISABLED);
     EPWM_setActionQualifierContSWForceAction(epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_SW_DISABLED);
 
-    EPWM_setDeadBandDelayMode(epwm, EPWM_DB_RED, false);
-    EPWM_setDeadBandDelayMode(epwm, EPWM_DB_FED, false);
+    EPWM_setDeadBandControlShadowLoadMode(epwm, EPWM_DB_LOAD_ON_CNTR_ZERO);
+    EPWM_setRisingEdgeDelayCountShadowLoadMode(epwm, EPWM_RED_LOAD_ON_CNTR_ZERO);
+    EPWM_setFallingEdgeDelayCountShadowLoadMode(epwm, EPWM_FED_LOAD_ON_CNTR_ZERO);
 
-    EPWM_setActionQualifierAction(epwm,
-                                  EPWM_AQ_OUTPUT_A,
-                                  inverted ? EPWM_AQ_OUTPUT_HIGH : EPWM_AQ_OUTPUT_LOW,
-                                  EPWM_AQ_OUTPUT_ON_TIMEBASE_ZERO);
-    EPWM_setActionQualifierAction(epwm,
-                                  EPWM_AQ_OUTPUT_A,
-                                  EPWM_AQ_OUTPUT_NO_CHANGE,
-                                  EPWM_AQ_OUTPUT_ON_TIMEBASE_PERIOD);
-    EPWM_setActionQualifierAction(epwm,
-                                  EPWM_AQ_OUTPUT_A,
-                                  inverted ? EPWM_AQ_OUTPUT_LOW : EPWM_AQ_OUTPUT_HIGH,
-                                  EPWM_AQ_OUTPUT_ON_TIMEBASE_UP_CMPA);
-    EPWM_setActionQualifierAction(epwm,
-                                  EPWM_AQ_OUTPUT_A,
-                                  inverted ? EPWM_AQ_OUTPUT_HIGH : EPWM_AQ_OUTPUT_LOW,
-                                  EPWM_AQ_OUTPUT_ON_TIMEBASE_DOWN_CMPA);
-
-    EPWM_setActionQualifierAction(epwm,
-                                  EPWM_AQ_OUTPUT_B,
-                                  inverted ? EPWM_AQ_OUTPUT_HIGH : EPWM_AQ_OUTPUT_LOW,
-                                  EPWM_AQ_OUTPUT_ON_TIMEBASE_ZERO);
-    EPWM_setActionQualifierAction(epwm,
-                                  EPWM_AQ_OUTPUT_B,
-                                  EPWM_AQ_OUTPUT_NO_CHANGE,
-                                  EPWM_AQ_OUTPUT_ON_TIMEBASE_PERIOD);
-    EPWM_setActionQualifierAction(epwm,
-                                  EPWM_AQ_OUTPUT_B,
-                                  inverted ? EPWM_AQ_OUTPUT_LOW : EPWM_AQ_OUTPUT_HIGH,
-                                  EPWM_AQ_OUTPUT_ON_TIMEBASE_UP_CMPB);
-    EPWM_setActionQualifierAction(epwm,
-                                  EPWM_AQ_OUTPUT_B,
-                                  inverted ? EPWM_AQ_OUTPUT_HIGH : EPWM_AQ_OUTPUT_LOW,
-                                  EPWM_AQ_OUTPUT_ON_TIMEBASE_DOWN_CMPB);
+    EPWM_setRisingEdgeDeadBandDelayInput(epwm, EPWM_DB_INPUT_EPWMA);
+    EPWM_setFallingEdgeDeadBandDelayInput(epwm, EPWM_DB_INPUT_EPWMA);
+    EPWM_setDeadBandDelayPolarity(epwm, EPWM_DB_RED, EPWM_DB_POLARITY_ACTIVE_HIGH);
+    EPWM_setDeadBandDelayPolarity(epwm, EPWM_DB_FED, EPWM_DB_POLARITY_ACTIVE_LOW);
+    EPWM_setDeadBandOutputSwapMode(epwm, EPWM_DB_OUTPUT_A, false);
+    EPWM_setDeadBandOutputSwapMode(epwm, EPWM_DB_OUTPUT_B, false);
+    EPWM_setRisingEdgeDelayCount(epwm, NS800_MOTOR_PWM_DEADTIME_TICKS);
+    EPWM_setFallingEdgeDelayCount(epwm, NS800_MOTOR_PWM_DEADTIME_TICKS);
+    EPWM_setDeadBandDelayMode(epwm, EPWM_DB_RED, true);
+    EPWM_setDeadBandDelayMode(epwm, EPWM_DB_FED, true);
 }
 
 static void pwm_force_outputs_low(EPWM_TypeDef *epwm)
@@ -173,7 +112,6 @@ static void pwm_module_init(rt_uint32_t index)
 {
     const struct ns800_pwm_module *module = &pwm_modules[index];
     rt_uint16_t cmp = pwm_cmp_from_permille(NS800_PWM_APP_DEFAULT_DUTY);
-    bool inverted = ((index & 1U) != 0U);
 
     pwm_gpio_init(&module->pin_a);
     pwm_gpio_init(&module->pin_b);
@@ -189,7 +127,15 @@ static void pwm_module_init(rt_uint32_t index)
     EPWM_setCounterCompareShadowLoadMode(module->epwm, EPWM_COUNTER_COMPARE_B, EPWM_COMP_LOAD_ON_CNTR_ZERO);
     EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_A, cmp);
     EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_B, cmp);
-    pwm_output_polarity_init(module->epwm, inverted);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_A, EPWM_AQ_OUTPUT_LOW, EPWM_AQ_OUTPUT_ON_TIMEBASE_ZERO);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_A, EPWM_AQ_OUTPUT_NO_CHANGE, EPWM_AQ_OUTPUT_ON_TIMEBASE_PERIOD);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_A, EPWM_AQ_OUTPUT_HIGH, EPWM_AQ_OUTPUT_ON_TIMEBASE_UP_CMPA);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_A, EPWM_AQ_OUTPUT_LOW, EPWM_AQ_OUTPUT_ON_TIMEBASE_DOWN_CMPA);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_LOW, EPWM_AQ_OUTPUT_ON_TIMEBASE_ZERO);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_NO_CHANGE, EPWM_AQ_OUTPUT_ON_TIMEBASE_PERIOD);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_NO_CHANGE, EPWM_AQ_OUTPUT_ON_TIMEBASE_UP_CMPB);
+    EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_NO_CHANGE, EPWM_AQ_OUTPUT_ON_TIMEBASE_DOWN_CMPB);
+    pwm_deadband_init(module->epwm);
     EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_A, cmp);
     EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_B, cmp);
     EPWM_setTimeBaseCounterMode(module->epwm, EPWM_COUNTER_MODE_UP_DOWN);
@@ -227,37 +173,36 @@ int ns800_pwm_app_start(void)
 
 void ns800_pwm_app_write_svm(const svm_dual_out_t *duty)
 {
-    rt_uint16_t normal_cmp;
-    rt_uint16_t inverted_cmp;
+    rt_uint16_t cmp;
 
     if (duty == RT_NULL)
     {
         return;
     }
 
-    /* Phase A: GPIO74/76 upper pair, GPIO75/77 lower pair. */
-    pwm_cmp_pair_from_unit(duty->upper.ta, &normal_cmp, &inverted_cmp);
-    EPWM_setCounterCompareValue(EPWM8, EPWM_COUNTER_COMPARE_A, normal_cmp);
-    EPWM_setCounterCompareValue(EPWM9, EPWM_COUNTER_COMPARE_A, inverted_cmp);
-    pwm_cmp_pair_from_unit(duty->lower.ta, &normal_cmp, &inverted_cmp);
-    EPWM_setCounterCompareValue(EPWM8, EPWM_COUNTER_COMPARE_B, normal_cmp);
-    EPWM_setCounterCompareValue(EPWM9, EPWM_COUNTER_COMPARE_B, inverted_cmp);
+    /* Phase A: EPWM8A/8B upper pair, EPWM9A/9B lower pair. */
+    cmp = pwm_cmp_from_unit(duty->upper.ta);
+    EPWM_setCounterCompareValue(EPWM8, EPWM_COUNTER_COMPARE_A, cmp);
+    EPWM_setCounterCompareValue(EPWM8, EPWM_COUNTER_COMPARE_B, cmp);
+    cmp = pwm_cmp_from_unit(duty->lower.ta);
+    EPWM_setCounterCompareValue(EPWM9, EPWM_COUNTER_COMPARE_A, cmp);
+    EPWM_setCounterCompareValue(EPWM9, EPWM_COUNTER_COMPARE_B, cmp);
 
-    /* Phase B: GPIO78/80 upper pair, GPIO79/81 lower pair. */
-    pwm_cmp_pair_from_unit(duty->upper.tb, &normal_cmp, &inverted_cmp);
-    EPWM_setCounterCompareValue(EPWM10, EPWM_COUNTER_COMPARE_A, normal_cmp);
-    EPWM_setCounterCompareValue(EPWM11, EPWM_COUNTER_COMPARE_A, inverted_cmp);
-    pwm_cmp_pair_from_unit(duty->lower.tb, &normal_cmp, &inverted_cmp);
-    EPWM_setCounterCompareValue(EPWM10, EPWM_COUNTER_COMPARE_B, normal_cmp);
-    EPWM_setCounterCompareValue(EPWM11, EPWM_COUNTER_COMPARE_B, inverted_cmp);
+    /* Phase B: EPWM10A/10B upper pair, EPWM11A/11B lower pair. */
+    cmp = pwm_cmp_from_unit(duty->upper.tb);
+    EPWM_setCounterCompareValue(EPWM10, EPWM_COUNTER_COMPARE_A, cmp);
+    EPWM_setCounterCompareValue(EPWM10, EPWM_COUNTER_COMPARE_B, cmp);
+    cmp = pwm_cmp_from_unit(duty->lower.tb);
+    EPWM_setCounterCompareValue(EPWM11, EPWM_COUNTER_COMPARE_A, cmp);
+    EPWM_setCounterCompareValue(EPWM11, EPWM_COUNTER_COMPARE_B, cmp);
 
-    /* Phase C: GPIO82/85 upper pair, GPIO83/86 lower pair. */
-    pwm_cmp_pair_from_unit(duty->upper.tc, &normal_cmp, &inverted_cmp);
-    EPWM_setCounterCompareValue(EPWM12, EPWM_COUNTER_COMPARE_A, normal_cmp);
-    EPWM_setCounterCompareValue(EPWM13, EPWM_COUNTER_COMPARE_A, inverted_cmp);
-    pwm_cmp_pair_from_unit(duty->lower.tc, &normal_cmp, &inverted_cmp);
-    EPWM_setCounterCompareValue(EPWM12, EPWM_COUNTER_COMPARE_B, normal_cmp);
-    EPWM_setCounterCompareValue(EPWM13, EPWM_COUNTER_COMPARE_B, inverted_cmp);
+    /* Phase C: EPWM12A/12B upper pair, EPWM13A/13B lower pair. */
+    cmp = pwm_cmp_from_unit(duty->upper.tc);
+    EPWM_setCounterCompareValue(EPWM12, EPWM_COUNTER_COMPARE_A, cmp);
+    EPWM_setCounterCompareValue(EPWM12, EPWM_COUNTER_COMPARE_B, cmp);
+    cmp = pwm_cmp_from_unit(duty->lower.tc);
+    EPWM_setCounterCompareValue(EPWM13, EPWM_COUNTER_COMPARE_A, cmp);
+    EPWM_setCounterCompareValue(EPWM13, EPWM_COUNTER_COMPARE_B, cmp);
 }
 
 int ns800_pwm_app_stop(void)
@@ -289,22 +234,12 @@ int ns800_pwm_app_set_duty(rt_uint32_t epwm_id, rt_uint32_t channel, rt_uint32_t
     }
 
     module = &pwm_modules[index];
-    pwm_duty[index][channel - 1U] = duty_permille;
-
-    if ((duty_permille == 0U) || (duty_permille == NS800_PWM_APP_DUTY_PERMILLE_MAX))
-    {
-        return 0;
-    }
+    pwm_duty[index][0] = duty_permille;
+    pwm_duty[index][1] = duty_permille;
 
     cmp = pwm_cmp_from_permille(duty_permille);
-    if (channel == NS800_PWM_APP_CHANNEL_B)
-    {
-        EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_B, cmp);
-    }
-    else
-    {
-        EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_A, cmp);
-    }
+    EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_A, cmp);
+    EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_B, cmp);
 
     return 0;
 }
