@@ -101,6 +101,7 @@ svm_status_t svm_control_isr_step(svm_control_state_t *state,
 {
     svm_adc_sample_t sample;
     svm_status_t status;
+    float dc_upper_voltage;
 
     if ((state == 0) || (out == 0)) return SVM_STATUS_NULL_POINTER;
     if (!svm_port_read_adc(&sample)) {
@@ -108,11 +109,16 @@ svm_status_t svm_control_isr_step(svm_control_state_t *state,
         return SVM_STATUS_NULL_POINTER;
     }
 
+    dc_upper_voltage = sample.dc_upper_voltage - sample.dc_lower_voltage;
+    if (dc_upper_voltage < 0.0f) {
+        dc_upper_voltage = 0.0f;
+    }
+
     status = svm_control_step(state,
                               cfg,
                               &sample.ac_voltage_abc,
                               &sample.ac_current_abc,
-                              sample.dc_upper_voltage,
+                              dc_upper_voltage,
                               sample.dc_lower_voltage,
                               false,
                               out);
