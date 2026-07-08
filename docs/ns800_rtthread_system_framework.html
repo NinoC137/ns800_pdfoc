@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NS800 PD-FOC RT-Thread 系统框架图</title>
+  <style>
+    :root {
+      --ink: #1d1d1f;
+      --muted: #6e6e73;
+      --hairline: rgba(29, 29, 31, 0.14);
+      --paper: #f5f5f7;
+      --panel: rgba(255, 255, 255, 0.82);
+      --rt: #0071e3;
+      --fast: #d2452f;
+      --sense: #18865b;
+      --power: #8b5a00;
+      --device: #7c3aed;
+      --shadow: 0 18px 45px rgba(0, 0, 0, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, #ffffff 0%, var(--paper) 58%, #ececf0 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 42px 0 48px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 28px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 5vw, 64px);
+      line-height: 1.02;
+      letter-spacing: 0;
+      font-weight: 720;
+    }
+
+    .lead {
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.65;
+    }
+
+    .stage {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(22px);
+      padding: 22px;
+    }
+
+    .diagram {
+      display: grid;
+      grid-template-columns: 1.05fr 0.82fr 1.05fr;
+      grid-template-rows: auto auto auto;
+      gap: 16px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .band {
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.72);
+      padding: 16px;
+      min-height: 120px;
+    }
+
+    .band h2,
+    .node h3 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .band p,
+    .node p,
+    .chip {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .band-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--hairline);
+      margin-bottom: 12px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 650;
+      color: #fff;
+      white-space: nowrap;
+    }
+
+    .rt .tag { background: var(--rt); }
+    .fast .tag { background: var(--fast); }
+    .sense .tag { background: var(--sense); }
+    .power .tag { background: var(--power); }
+    .device .tag { background: var(--device); }
+
+    .rt { grid-column: 1 / 4; }
+    .sense { grid-column: 1; }
+    .core { grid-column: 2; grid-row: 2 / 4; }
+    .power { grid-column: 3; }
+    .fast { grid-column: 1 / 4; }
+
+    .node-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    .node-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .node {
+      border: 1px solid rgba(29, 29, 31, 0.12);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.78);
+      padding: 12px;
+      min-height: 74px;
+    }
+
+    .node strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.25;
+    }
+
+    .core-card {
+      height: 100%;
+      border: 1px solid rgba(0, 113, 227, 0.26);
+      border-radius: 8px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.96), rgba(246,250,255,0.9));
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 18px;
+    }
+
+    .chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      border: 1px solid var(--hairline);
+      border-radius: 999px;
+      padding: 7px 10px;
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--ink);
+      font-weight: 560;
+    }
+
+    .path {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 10px;
+    }
+
+    .path .node {
+      border-color: rgba(210, 69, 47, 0.26);
+      background: linear-gradient(180deg, #fff, #fff7f4);
+    }
+
+    .arrow {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .legend-item {
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      padding: 11px 12px;
+      background: rgba(255, 255, 255, 0.68);
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .legend-item b {
+      color: var(--ink);
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      margin-right: 6px;
+      vertical-align: 1px;
+    }
+
+    @media (max-width: 920px) {
+      main {
+        width: min(100% - 24px, 720px);
+        padding-top: 28px;
+      }
+
+      header,
+      .diagram,
+      .node-grid,
+      .path,
+      .legend {
+        grid-template-columns: 1fr;
+      }
+
+      .rt,
+      .sense,
+      .core,
+      .power,
+      .fast {
+        grid-column: 1;
+        grid-row: auto;
+      }
+
+      .arrow {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>RT-Thread 分层实时控制框架</h1>
+      <p class="lead">
+        面向 NS800RT7P65 的单级式多端口无刷电机驱动：RT-Thread 承载系统服务层，
+        EPWM/ADC-DMA/ISR/PDSVM 保持硬实时快路径，NPC 三电平功率级完成双直流端口能量调度与三相电机驱动。
+      </p>
+    </header>
+
+    <section class="stage" aria-label="NS800 PD-FOC 系统框架图">
+      <svg class="arrow" viewBox="0 0 1180 640" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <marker id="arrowBlue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#0071e3"></path>
+          </marker>
+          <marker id="arrowRed" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#d2452f"></path>
+          </marker>
+          <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#18865b"></path>
+          </marker>
+        </defs>
+        <path d="M190 202 C320 242, 400 262, 498 312" fill="none" stroke="#18865b" stroke-width="2" marker-end="url(#arrowGreen)" opacity="0.72"></path>
+        <path d="M590 182 C590 232, 590 268, 590 320" fill="none" stroke="#0071e3" stroke-width="2" marker-end="url(#arrowBlue)" opacity="0.7"></path>
+        <path d="M988 202 C862 242, 780 262, 682 312" fill="none" stroke="#8b5a00" stroke-width="2" marker-end="url(#arrowRed)" opacity="0.56"></path>
+        <path d="M190 489 C358 530, 505 536, 628 522 C770 506, 895 475, 1012 444" fill="none" stroke="#d2452f" stroke-width="2.4" marker-end="url(#arrowRed)" opacity="0.72"></path>
+      </svg>
+
+      <div class="diagram">
+        <section class="band rt">
+          <div class="band-title">
+            <h2>RT-Thread 系统服务层</h2>
+            <span class="tag">线程 / 事件 / 设备框架</span>
+          </div>
+          <div class="node-grid">
+            <div class="node">
+              <strong>启动编排</strong>
+              <p><code>ns800_app_main</code> 创建 <code>rttinit</code>，按序启动 PWM、ADC 与电机应用。</p>
+            </div>
+            <div class="node">
+              <strong>低速交互</strong>
+              <p><code>buttons</code> 5 ms 扫描参数，<code>oled</code> 100 ms 刷新运行状态。</p>
+            </div>
+            <div class="node">
+              <strong>保护与遥测</strong>
+              <p><code>motguard</code> 处理故障事件，<code>mottelem</code> 消费 ringbuffer 遥测帧。</p>
+            </div>
+            <div class="node">
+              <strong>调试与通信</strong>
+              <p>FinSH/MSH、UART console、CAN/CANFD 与 device IPC 承载现场调试和扩展接口。</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="band sense">
+          <div class="band-title">
+            <h2>采样与反馈</h2>
+            <span class="tag">EPWM1 → ADC → EDMA</span>
+          </div>
+          <div class="node-list">
+            <div class="node">
+              <strong>10 路模拟采样</strong>
+              <p>HV/LV 电压电流、三相电压电流进入 ADCA SOC0-SOC9。</p>
+            </div>
+            <div class="node">
+              <strong>32 帧后台缓冲</strong>
+              <p>EDMA 搬运 RESULT0-9，<code>ns800_adc_background_latest</code> 提供最新帧。</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="core">
+          <div class="core-card">
+            <div>
+              <h2>NS800RT7P65 MCU</h2>
+              <p class="lead">
+                400 MHz 控制器上同时运行 RT-Thread 服务任务与 EPWM2 控制中断。
+                RTOS 负责系统组织，硬实时路径保持无阻塞执行。
+              </p>
+            </div>
+            <div class="chip-row">
+              <span class="chip">RT-Thread 5.x</span>
+              <span class="chip">EPWM2 ISR</span>
+              <span class="chip">PDSVM</span>
+              <span class="chip">ADC-DMA</span>
+              <span class="chip">FinSH/MSH</span>
+              <span class="chip">CAN/CANFD</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="band power">
+          <div class="band-title">
+            <h2>单级式多端口功率级</h2>
+            <span class="tag">NPC 三电平</span>
+          </div>
+          <div class="node-list">
+            <div class="node">
+              <strong>双直流端口</strong>
+              <p>高压主电池与低压辅助电池直接参与同一功率级能量分配。</p>
+            </div>
+            <div class="node">
+              <strong>三相无刷电机</strong>
+              <p>交流侧电压合成与直流端口功率分配在同一开关周期内完成。</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="band fast">
+          <div class="band-title">
+            <h2>硬实时功率控制快路径</h2>
+            <span class="tag">20 kHz 控制 / 30 kHz PWM</span>
+          </div>
+          <div class="path">
+            <div class="node">
+              <strong>EPWM 触发</strong>
+              <p>EPWM1 同步触发 ADC；EPWM2 提供控制 ISR 节拍。</p>
+            </div>
+            <div class="node">
+              <strong>ADC-DMA 帧</strong>
+              <p>后台最新帧锁存相电流、母线量与端口状态。</p>
+            </div>
+            <div class="node">
+              <strong>控制 ISR</strong>
+              <p><code>ns800_motor_isr</code> 读取采样与命令，禁止阻塞操作。</p>
+            </div>
+            <div class="node">
+              <strong>PDSVM 运算</strong>
+              <p>合成交流电压，同时分配高压/低压端口功率。</p>
+            </div>
+            <div class="node">
+              <strong>PWM 生成</strong>
+              <p><code>EPWM8-13</code> 输出三相 upper/lower 桥臂 PWM。</p>
+            </div>
+            <div class="node">
+              <strong>能量流动</strong>
+              <p>HV、LV 与电机侧无需额外 DC/DC 级即可调度功率。</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item">
+          <b><span class="dot" style="background:#0071e3"></span>RTOS 边界</b>
+          RT-Thread 管理并发服务、设备抽象与调试入口，不直接替代高频控制 ISR。
+        </div>
+        <div class="legend-item">
+          <b><span class="dot" style="background:#d2452f"></span>快路径边界</b>
+          控制 ISR、PDSVM 与 EPWM compare 更新保持固定节拍和短执行路径。
+        </div>
+        <div class="legend-item">
+          <b><span class="dot" style="background:#18865b"></span>采样边界</b>
+          EPWM 触发与 EDMA 搬运降低 CPU 采样负担，向控制和显示共享最新帧。
+        </div>
+        <div class="legend-item">
+          <b><span class="dot" style="background:#8b5a00"></span>功率边界</b>
+          NPC 三电平单级拓扑把直流端口能量调度与三相逆变合并在同一功率级。
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NS800 功能特性图</title>
+  <style>
+    :root {
+      --ink: #1d1d1f;
+      --muted: #6e6e73;
+      --line: rgba(29, 29, 31, 0.14);
+      --paper: #f5f5f7;
+      --card: rgba(255, 255, 255, 0.9);
+      --blue: #0071e3;
+      --green: #18865b;
+      --red: #d2452f;
+      --gold: #9a6a00;
+      --violet: #6d46d8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(180deg, #fff 0%, var(--paper) 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1160px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 40px 0 46px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 0.92fr 1.08fr;
+      gap: 28px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 4.7vw, 58px);
+      line-height: 1.04;
+      letter-spacing: 0;
+      font-weight: 730;
+    }
+
+    .lead {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .stage {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--card);
+      box-shadow: 0 22px 56px rgba(0, 0, 0, 0.08);
+      padding: 22px;
+    }
+
+    .core {
+      border: 1px solid rgba(0, 113, 227, 0.24);
+      border-radius: 10px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(246,250,255,0.9));
+      padding: 18px;
+      display: grid;
+      grid-template-columns: 0.72fr 1.28fr;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .core-title {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+      font-weight: 720;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 11px;
+      background: rgba(255,255,255,0.8);
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 620;
+      white-space: nowrap;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+
+    .feature {
+      position: relative;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.82);
+      padding: 16px;
+      min-height: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 740;
+      font-size: 14px;
+    }
+
+    .feature h2 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.52;
+    }
+
+    .mini-flow {
+      display: grid;
+      gap: 8px;
+      margin-top: auto;
+    }
+
+    .mini {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 11px;
+      background: rgba(255,255,255,0.74);
+      min-height: 58px;
+    }
+
+    .mini b {
+      display: block;
+      color: var(--ink);
+      font-size: 13px;
+      margin-bottom: 3px;
+    }
+
+    .mini span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.38;
+    }
+
+    .power { color: var(--gold); }
+    .realtime { color: var(--blue); }
+    .stable { color: var(--green); }
+    .power .badge { background: var(--gold); }
+    .realtime .badge { background: var(--blue); }
+    .stable .badge { background: var(--green); }
+
+    .result {
+      margin-top: 16px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .result div {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.66);
+      padding: 12px;
+      color: var(--muted);
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+
+    .result b {
+      display: block;
+      color: var(--ink);
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    @media (max-width: 920px) {
+      main { width: min(100% - 24px, 740px); }
+      header,
+      .core,
+      .features,
+      .result {
+        grid-template-columns: 1fr;
+      }
+      .feature {
+        min-height: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>系统功能特性</h1>
+      <p class="lead">
+        本系统将单级式多端口功率拓扑与 RT-Thread 实时软件架构结合，
+        形成“功率可分配、控制可实时、系统可稳定运行”的电机驱动平台。
+      </p>
+    </header>
+
+    <section class="stage" aria-label="系统功能特性图">
+      <div class="core">
+        <h2 class="core-title">RT-Thread + PDSVM + NPC 三电平逆变器</h2>
+        <div class="chips" aria-label="关键支撑技术">
+          <span class="chip">双直流端口</span>
+          <span class="chip">PDSVM 功率分配</span>
+          <span class="chip">EPWM 触发</span>
+          <span class="chip">ADC-DMA 采样</span>
+          <span class="chip">RT-Thread 线程</span>
+          <span class="chip">事件 / 互斥 / 设备框架</span>
+        </div>
+      </div>
+
+      <div class="features">
+        <article class="feature power">
+          <div class="badge">01</div>
+          <h2>功率分配能力</h2>
+          <p>逆变器连接高压主电池与低压辅助电池，在满足交流负载功率需求的同时，实时调节两个直流端口的输出额度。</p>
+          <div class="mini-flow">
+            <div class="mini">
+              <b>双端口输入</b>
+              <span>高压主电池提供主功率，低压辅助电池参与功率支撑。</span>
+            </div>
+            <div class="mini">
+              <b>PDSVM 分配</b>
+              <span>同一开关周期内完成交流电压合成与端口功率分配。</span>
+            </div>
+            <div class="mini">
+              <b>辅助端恢复</b>
+              <span>支持高压端向低压端充能，使辅助电池在功率支撑后快速恢复。</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature realtime">
+          <div class="badge">02</div>
+          <h2>实时控制能力</h2>
+          <p>RT-Thread 并行管理外设任务，高频采样与 PDSVM 运算保留在硬实时控制路径中，兼顾控制周期与外设响应。</p>
+          <div class="mini-flow">
+            <div class="mini">
+              <b>硬实时快路径</b>
+              <span>EPWM 触发、ADC-DMA 采样、控制 ISR 与 PWM 更新保持固定节拍。</span>
+            </div>
+            <div class="mini">
+              <b>系统服务层</b>
+              <span>按键、OLED、shell、遥测、通信由 RT-Thread 线程调度。</span>
+            </div>
+            <div class="mini">
+              <b>响应并行化</b>
+              <span>控制运算不被低速外设阻塞，外设交互也保持连续响应。</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="feature stable">
+          <div class="badge">03</div>
+          <h2>系统稳定性</h2>
+          <p>通过 RT-Thread 内核组件实现同步通信与优先级编排，将交互外设和保护逻辑从主功率控制层中隔离。</p>
+          <div class="mini-flow">
+            <div class="mini">
+              <b>线程隔离</b>
+              <span>低速任务独立运行，避免进入高频控制中断。</span>
+            </div>
+            <div class="mini">
+              <b>事件保护</b>
+              <span>故障状态通过事件上报，由保护线程完成记录与停机处理。</span>
+            </div>
+            <div class="mini">
+              <b>优先级编排</b>
+              <span>控制链路优先保证实时性，降低外设阻塞导致硬件风险的可能性。</span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="result">
+        <div>
+          <b>能量层收益</b>
+          双直流端口可按负载需求动态分担功率，并支持端口间能量恢复。
+        </div>
+        <div>
+          <b>控制层收益</b>
+          高频采样、控制计算和 PWM 输出保持确定周期，提升驱动实时性。
+        </div>
+        <div>
+          <b>系统层收益</b>
+          调试、显示、通信和故障处理模块化运行，提升稳定性与可维护性。
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

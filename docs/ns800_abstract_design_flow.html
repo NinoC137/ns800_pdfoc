@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NS800 抽象设计流程图</title>
+  <style>
+    :root {
+      --ink: #1d1d1f;
+      --muted: #6e6e73;
+      --line: rgba(29, 29, 31, 0.14);
+      --paper: #f5f5f7;
+      --card: rgba(255, 255, 255, 0.88);
+      --blue: #0071e3;
+      --green: #18865b;
+      --red: #d2452f;
+      --gold: #9a6a00;
+      --violet: #6d46d8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(180deg, #ffffff 0%, var(--paper) 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1120px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 42px 0;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 28px;
+      align-items: end;
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 4.5vw, 56px);
+      line-height: 1.04;
+      letter-spacing: 0;
+      font-weight: 730;
+    }
+
+    .lead {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .canvas {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--card);
+      box-shadow: 0 22px 56px rgba(0, 0, 0, 0.08);
+      padding: 22px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .step {
+      position: relative;
+      min-height: 178px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.86);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .step:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -13px;
+      width: 22px;
+      height: 2px;
+      background: currentColor;
+      opacity: 0.46;
+      transform: translateY(-50%);
+    }
+
+    .step:not(:last-child)::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -16px;
+      width: 9px;
+      height: 9px;
+      border-top: 2px solid currentColor;
+      border-right: 2px solid currentColor;
+      transform: translateY(-50%) rotate(45deg);
+      opacity: 0.46;
+    }
+
+    .index {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 730;
+      margin-bottom: 14px;
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      font-size: 17px;
+      line-height: 1.22;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.52;
+    }
+
+    .note {
+      margin-top: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.65);
+      padding: 13px 14px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .s1 { color: var(--blue); }
+    .s2 { color: var(--violet); }
+    .s3 { color: var(--green); }
+    .s4 { color: var(--red); }
+    .s5 { color: var(--gold); }
+    .s1 .index { background: var(--blue); }
+    .s2 .index { background: var(--violet); }
+    .s3 .index { background: var(--green); }
+    .s4 .index { background: var(--red); }
+    .s5 .index { background: var(--gold); }
+
+    @media (max-width: 940px) {
+      main { width: min(100% - 24px, 720px); }
+      header,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .step {
+        min-height: 132px;
+      }
+
+      .step::before,
+      .step::after {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>抽象设计流程</h1>
+      <p class="lead">
+        以少量关键节点概括系统从需求到实现的主线：RT-Thread 负责软件组织，
+        硬实时链路完成采样和控制，PDSVM 与 NPC 功率级完成多端口能量调度。
+      </p>
+    </header>
+
+    <section class="canvas" aria-label="抽象系统设计流程">
+      <div class="flow">
+        <article class="step s1">
+          <div>
+            <div class="index">01</div>
+            <h2>多端口驱动需求</h2>
+            <p>同时面向高压主电池、低压辅助电池和三相无刷电机，要求驱动与功率分配同步完成。</p>
+          </div>
+        </article>
+
+        <article class="step s2">
+          <div>
+            <div class="index">02</div>
+            <h2>RT-Thread 软件分层</h2>
+            <p>将交互、显示、调试、遥测、故障和通信放入系统服务层，隔离低速任务。</p>
+          </div>
+        </article>
+
+        <article class="step s3">
+          <div>
+            <div class="index">03</div>
+            <h2>硬实时采样控制</h2>
+            <p>由 EPWM 触发、ADC-DMA 采样、控制 ISR 构成固定周期的快速控制路径。</p>
+          </div>
+        </article>
+
+        <article class="step s4">
+          <div>
+            <div class="index">04</div>
+            <h2>PDSVM 功率分配</h2>
+            <p>在同一开关周期内完成交流侧电压合成和双直流端口功率分配。</p>
+          </div>
+        </article>
+
+        <article class="step s5">
+          <div>
+            <div class="index">05</div>
+            <h2>NPC 功率执行</h2>
+            <p>三电平单级功率级输出三相 PWM，实现高低压端口与电机侧之间的能量调度。</p>
+          </div>
+        </article>
+      </div>
+
+      <div class="note">
+        该流程强调系统级设计逻辑：先定义多端口功率流控目标，再用 RT-Thread 建立可扩展软件平台，最后通过硬实时采样控制、PDSVM 调制和 NPC 功率级完成实际能量转换。
+      </div>
+    </section>
+  </main>
+</body>
+</html>

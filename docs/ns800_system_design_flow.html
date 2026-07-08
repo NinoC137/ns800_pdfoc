@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NS800 PD-FOC 系统设计流程</title>
+  <style>
+    :root {
+      --ink: #1d1d1f;
+      --muted: #66666b;
+      --line: rgba(29, 29, 31, 0.16);
+      --paper: #f5f5f7;
+      --panel: rgba(255, 255, 255, 0.86);
+      --blue: #0071e3;
+      --green: #1a7f57;
+      --red: #d2452f;
+      --gold: #9a6a00;
+      --violet: #6d46d8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(180deg, #fff 0%, var(--paper) 100%);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1180px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 38px 0 42px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 0.92fr 1.08fr;
+      gap: 30px;
+      align-items: end;
+      margin-bottom: 22px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(34px, 4.8vw, 58px);
+      line-height: 1.04;
+      letter-spacing: 0;
+      font-weight: 730;
+    }
+
+    .summary {
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .frame {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      box-shadow: 0 22px 55px rgba(0, 0, 0, 0.08);
+      padding: 20px;
+      overflow: hidden;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-areas:
+        "req rtos service debug"
+        "init sample isr power";
+      gap: 12px;
+      position: relative;
+    }
+
+    .flow::before {
+      content: "";
+      position: absolute;
+      left: 8%;
+      right: 8%;
+      top: 50%;
+      border-top: 2px solid rgba(0, 113, 227, 0.22);
+      z-index: 0;
+    }
+
+    .node {
+      position: relative;
+      z-index: 1;
+      min-height: 150px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 14px;
+    }
+
+    .node::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: -11px;
+      width: 18px;
+      height: 18px;
+      border-top: 2px solid currentColor;
+      border-right: 2px solid currentColor;
+      transform: translateY(-50%) rotate(45deg);
+      background: transparent;
+      opacity: 0.42;
+    }
+
+    .node:nth-child(4)::after,
+    .node:nth-child(8)::after {
+      display: none;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 680;
+      margin-bottom: 10px;
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12.5px;
+      line-height: 1.48;
+    }
+
+    code {
+      font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+      font-size: 0.95em;
+      color: var(--ink);
+      background: rgba(29, 29, 31, 0.06);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+
+    .req { grid-area: req; color: var(--blue); }
+    .rtos { grid-area: rtos; color: var(--blue); }
+    .service { grid-area: service; color: var(--violet); }
+    .debug { grid-area: debug; color: var(--violet); }
+    .init { grid-area: init; color: var(--green); }
+    .sample { grid-area: sample; color: var(--green); }
+    .isr { grid-area: isr; color: var(--red); }
+    .power { grid-area: power; color: var(--gold); }
+
+    .req .kicker, .rtos .kicker { background: var(--blue); }
+    .service .kicker, .debug .kicker { background: var(--violet); }
+    .init .kicker, .sample .kicker { background: var(--green); }
+    .isr .kicker { background: var(--red); }
+    .power .kicker { background: var(--gold); }
+
+    .lanes {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .lane {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.68);
+      padding: 11px 12px;
+      min-height: 74px;
+    }
+
+    .lane b {
+      display: block;
+      color: var(--ink);
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    @media (max-width: 920px) {
+      main { width: min(100% - 24px, 760px); }
+      header,
+      .flow,
+      .lanes {
+        grid-template-columns: 1fr;
+      }
+      .flow {
+        grid-template-areas:
+          "req" "rtos" "service" "debug" "init" "sample" "isr" "power";
+      }
+      .flow::before,
+      .node::after {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>系统设计流程</h1>
+      <p class="summary">
+        设计从多端口电机驱动需求出发，先建立 RT-Thread 软件分层，再接入 NS800RT7P65 的采样、控制与 PWM 硬件链路。
+        最终形成一条可调试、可保护、可扩展的软硬件闭环。
+      </p>
+    </header>
+
+    <section class="frame" aria-label="软硬件结合系统设计流程">
+      <div class="flow">
+        <article class="node req">
+          <span class="kicker">01 需求定义</span>
+          <h2>多端口功率流控</h2>
+          <p>面向高压主电池、低压辅助电池与三相无刷电机，目标是在单级功率级内完成电机驱动与端口功率分配。</p>
+        </article>
+
+        <article class="node rtos">
+          <span class="kicker">02 RTOS 架构</span>
+          <h2>RT-Thread 分层</h2>
+          <p><code>rtconfig.h</code> 启用线程、事件、互斥量、ringbuffer、FinSH/MSH、serial、CAN/CANFD、ADC、PIN 和设备框架。</p>
+        </article>
+
+        <article class="node service">
+          <span class="kicker">03 系统服务</span>
+          <h2>低速任务隔离</h2>
+          <p><code>buttons</code>、<code>oled</code>、<code>motguard</code>、<code>mottelem</code> 承载交互、显示、故障和遥测，避免进入控制 ISR。</p>
+        </article>
+
+        <article class="node debug">
+          <span class="kicker">04 调试闭环</span>
+          <h2>在线验证入口</h2>
+          <p><code>pwm_duty</code>、<code>adc_bg_dump</code>、<code>motor_status</code>、<code>motor_ol</code> 支撑功率级 bring-up 与运行状态检查。</p>
+        </article>
+
+        <article class="node init">
+          <span class="kicker">05 启动编排</span>
+          <h2>按依赖启动模块</h2>
+          <p><code>ns800_app_main</code> 启动交互与 PWM；<code>rttinit</code> 再启动 <code>ns800_adc_background_start</code> 与 <code>ns800_motor_app_start</code>。</p>
+        </article>
+
+        <article class="node sample">
+          <span class="kicker">06 硬件采样</span>
+          <h2>EPWM1 → ADC → EDMA</h2>
+          <p>EPWM1 SOCA 触发 ADCA SOC0-SOC9，EDMA 搬运 10 路结果到 32 帧缓冲，<code>ns800_adc_background_latest</code> 提供最新帧。</p>
+        </article>
+
+        <article class="node isr">
+          <span class="kicker">07 实时控制</span>
+          <h2>EPWM2 ISR + PDSVM</h2>
+          <p><code>ns800_motor_isr</code> 读取采样和命令，执行电机控制与 PDSVM，保持无打印、无动态内存、无阻塞路径。</p>
+        </article>
+
+        <article class="node power">
+          <span class="kicker">08 功率执行</span>
+          <h2>EPWM8-13 驱动 NPC</h2>
+          <p><code>ns800_pwm_app_write_svm</code> 将 upper/lower 三相占空比映射到 EPWM8-13，驱动三电平桥臂并完成能量调度。</p>
+        </article>
+      </div>
+
+      <div class="lanes">
+        <div class="lane">
+          <b>软件主线</b>
+          <p>RT-Thread 负责并发组织、设备抽象、故障事件和调试接口。</p>
+        </div>
+        <div class="lane">
+          <b>硬件主线</b>
+          <p>EPWM、ADC、EDMA 与 PWM compare 形成确定性的采样和输出链路。</p>
+        </div>
+        <div class="lane">
+          <b>控制主线</b>
+          <p>PDSVM 在同一开关周期内完成交流电压合成和双直流端口功率分配。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
