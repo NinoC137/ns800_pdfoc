@@ -135,10 +135,15 @@ static void motor_wave_snapshot(svm_dual_out_t *duty, float *hvdc_v, float *lvdc
 
     rt_enter_critical();
     *duty = motor_status.last_output.duty;
-    *hvdc_v = motor_cfg.dc_upper_voltage_v;
-    *lvdc_v = motor_cfg.dc_lower_voltage_v;
+    *hvdc_v = motor_cfg.hvdc_port_voltage_v;
+    *lvdc_v = motor_cfg.lvdc_port_voltage_v;
     *running = motor_running;
     rt_exit_critical();
+}
+
+static float motor_svm_upper_voltage(float hvdc_v, float lvdc_v)
+{
+    return hvdc_v - lvdc_v;
 }
 
 static void motor_wave_thread_entry(void *parameter)
@@ -146,6 +151,7 @@ static void motor_wave_thread_entry(void *parameter)
     svm_dual_out_t duty;
     float hvdc_v;
     float lvdc_v;
+    float upper_v;
     float va_f;
     float vb_f;
     float vc_f;
@@ -164,9 +170,10 @@ static void motor_wave_thread_entry(void *parameter)
             motor_wave_snapshot(&duty, &hvdc_v, &lvdc_v, &running);
             if (running == RT_TRUE)
             {
-                va_f = duty.upper.ta * hvdc_v + duty.lower.ta * lvdc_v;
-                vb_f = duty.upper.tb * hvdc_v + duty.lower.tb * lvdc_v;
-                vc_f = duty.upper.tc * hvdc_v + duty.lower.tc * lvdc_v;
+                upper_v = motor_svm_upper_voltage(hvdc_v, lvdc_v);
+                va_f = duty.upper.ta * upper_v + duty.lower.ta * lvdc_v;
+                vb_f = duty.upper.tb * upper_v + duty.lower.tb * lvdc_v;
+                vc_f = duty.upper.tc * upper_v + duty.lower.tc * lvdc_v;
 
                 vab = motor_float_to_i32((va_f - vb_f) * 1000.0f);
                 vbc = motor_float_to_i32((vb_f - vc_f) * 1000.0f);

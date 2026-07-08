@@ -51,6 +51,11 @@ static float motor_positive_limit(float value)
     return (value < 0.0f) ? -value : value;
 }
 
+static float motor_svm_upper_voltage(float hvdc_port_voltage_v, float lvdc_port_voltage_v)
+{
+    return hvdc_port_voltage_v - lvdc_port_voltage_v;
+}
+
 /**
  * @brief 用三相电压指令和三相采样电流计算瞬时输出功率。
  *
@@ -254,7 +259,8 @@ void ns800_motor_default_params(ns800_motor_params_t *params)
 /**
  * @brief 填充默认电机控制配置。
  *
- * 默认上电开环输出为 24 V peak、300 rpm，双端口母线电压固定为 32 V/24 V。
+ * 默认上电开环输出为 24 V peak；物理 HVDC/LVDC 端口电压固定为 32 V/24 V。
+ * SVM upper 虚拟端口电压在调用处由 HVDC-LVDC 解算。
  *
  * @param cfg 输出配置指针。
  */
@@ -268,8 +274,8 @@ void ns800_motor_default_config(ns800_motor_config_t *cfg)
     cfg->sample_time_s = NS800_MOTOR_CONTROL_PERIOD_S;
     cfg->open_loop_freq_hz = NS800_MOTOR_DEFAULT_OPEN_LOOP_FREQ_HZ;
     cfg->open_loop_voltage_v = NS800_MOTOR_DEFAULT_OPEN_LOOP_VOLTAGE_V;
-    cfg->dc_upper_voltage_v = NS800_MOTOR_DEFAULT_DC_UPPER_VOLTAGE_V;
-    cfg->dc_lower_voltage_v = NS800_MOTOR_DEFAULT_DC_LOWER_VOLTAGE_V;
+    cfg->hvdc_port_voltage_v = NS800_MOTOR_DEFAULT_HVDC_PORT_VOLTAGE_V;
+    cfg->lvdc_port_voltage_v = NS800_MOTOR_DEFAULT_LVDC_PORT_VOLTAGE_V;
     cfg->id_ref_a = NS800_MOTOR_DEFAULT_ID_REF_A;
     cfg->max_current_a = NS800_MOTOR_DEFAULT_MAX_CURRENT_A;
     cfg->max_torque_nm = NS800_MOTOR_DEFAULT_MAX_TORQUE_NM;
@@ -457,8 +463,9 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
         out->output_power_w = motor_output_power(&out->voltage_cmd_abc, &in->sample.phase_current_abc);
         svm_status = svm_compute_dual(&out->voltage_cmd_ab,
                                       xi,
-                                      cfg->dc_upper_voltage_v,
-                                      cfg->dc_lower_voltage_v,
+                                      motor_svm_upper_voltage(cfg->hvdc_port_voltage_v,
+                                                              cfg->lvdc_port_voltage_v),
+                                      cfg->lvdc_port_voltage_v,
                                       &cfg->svm,
                                       &out->duty);
         status = motor_status_from_svm(status, svm_status);
@@ -531,8 +538,9 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
     out->output_power_w = motor_output_power(&out->voltage_cmd_abc, &in->sample.phase_current_abc);
     svm_status = svm_compute_dual(&out->voltage_cmd_ab,
                                   xi,
-                                  cfg->dc_upper_voltage_v,
-                                  cfg->dc_lower_voltage_v,
+                                  motor_svm_upper_voltage(cfg->hvdc_port_voltage_v,
+                                                          cfg->lvdc_port_voltage_v),
+                                  cfg->lvdc_port_voltage_v,
                                   &cfg->svm,
                                   &out->duty);
     status = motor_status_from_svm(status, svm_status);

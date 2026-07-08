@@ -21,7 +21,7 @@ extern "C" {
 #define NS800_PWM_APP_CHANNEL_B            2U
 #define NS800_PWM_APP_DUTY_PERMILLE_MAX    1000U
 #define NS800_PWM_APP_DEFAULT_DUTY         500U
-#define NS800_PWM_APP_FREQ_HZ              10000U
+#define NS800_PWM_APP_FREQ_HZ              20000U
 #define NS800_PWM_APP_TBPRD                (NS800_MOTOR_PWM_TBCLK_HZ / (2U * NS800_PWM_APP_FREQ_HZ))
 
 int ns800_pwm_app_start(void);

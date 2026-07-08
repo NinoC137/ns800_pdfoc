@@ -83,7 +83,7 @@ typedef struct
 /**
  * @brief 电机控制器配置。
  *
- * 包含控制周期、开环测试参数、固定母线电压、PI 参数和功率分配 SVM 配置。
+ * 包含控制周期、开环测试参数、物理 HVDC/LVDC 端口电压、PI 参数和功率分配 SVM 配置。
  */
 typedef struct
 {
@@ -93,10 +93,10 @@ typedef struct
     float open_loop_freq_hz;
     /**< 开环 alpha/beta 电压矢量峰值，单位 V。 */
     float open_loop_voltage_v;
-    /**< upper 侧固定母线电压，单位 V。 */
-    float dc_upper_voltage_v;
-    /**< lower 侧固定母线电压，单位 V。 */
-    float dc_lower_voltage_v;
+    /**< 物理 HVDC 端口电压，单位 V；SVM upper 虚拟端口电压由 HVDC-LVDC 解算。 */
+    float hvdc_port_voltage_v;
+    /**< 物理 LVDC 端口电压，单位 V；SVM lower 虚拟端口电压直接使用该值。 */
+    float lvdc_port_voltage_v;
     /**< d 轴电流参考，默认 0 A。 */
     float id_ref_a;
     /**< 电流绝对限幅，单位 A。 */
