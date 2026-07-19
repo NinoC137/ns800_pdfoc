@@ -16,19 +16,19 @@ extern "C" {
 #define NS800_MOTOR_CONTROL_TBPRD                  (NS800_MOTOR_EPWM_TBCLK_HZ / (2U * NS800_MOTOR_CONTROL_FREQ_HZ))
 #define NS800_MOTOR_CONTROL_PERIOD_S               (1.0f / (float)NS800_MOTOR_CONTROL_FREQ_HZ)
 
-#define NS800_MOTOR_DEFAULT_POLE_PAIRS             2U
-#define NS800_MOTOR_DEFAULT_OPEN_LOOP_RPM          (1000.0f)
+#define NS800_MOTOR_DEFAULT_POLE_PAIRS             7U
+#define NS800_MOTOR_DEFAULT_OPEN_LOOP_RPM          (500.0f)
 #define NS800_MOTOR_DEFAULT_OPEN_LOOP_FREQ_HZ      ((NS800_MOTOR_DEFAULT_OPEN_LOOP_RPM / 60.0f) * \
                                                     (float)NS800_MOTOR_DEFAULT_POLE_PAIRS)
 #define NS800_MOTOR_DEFAULT_OPEN_LOOP_VOLTAGE_V    (24.0f)
 #define NS800_MOTOR_DEFAULT_HVDC_PORT_VOLTAGE_V    (32.0f)
 #define NS800_MOTOR_DEFAULT_LVDC_PORT_VOLTAGE_V    (24.0f)
 
-#define NS800_MOTOR_DEFAULT_PHASE_RESISTANCE_OHM   (15.0f)
-#define NS800_MOTOR_DEFAULT_TORQUE_CONSTANT_NM_A   (0.10f)
-#define NS800_MOTOR_DEFAULT_FLUX_WB                (0.02f)
-#define NS800_MOTOR_DEFAULT_LD_H                   (13.0e-3f)
-#define NS800_MOTOR_DEFAULT_LQ_H                   (13.0e-3f)
+#define NS800_MOTOR_DEFAULT_PHASE_RESISTANCE_OHM   (1.0f)
+#define NS800_MOTOR_DEFAULT_TORQUE_CONSTANT_NM_A   (0.38f)
+#define NS800_MOTOR_DEFAULT_FLUX_WB                (0.036f)
+#define NS800_MOTOR_DEFAULT_LD_H                   (0.4e-3f)
+#define NS800_MOTOR_DEFAULT_LQ_H                   (0.5e-3f)
 
 #define NS800_MOTOR_DEFAULT_ID_REF_A               (0.0f)
 #define NS800_MOTOR_DEFAULT_CURRENT_KP             (2.0f)
