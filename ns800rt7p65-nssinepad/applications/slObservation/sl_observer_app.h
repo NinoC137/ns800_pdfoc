@@ -41,6 +41,26 @@ extern "C" {
 int sl_observer_app_start(void);
 
 /**
+ * @brief 用实际电机参数与控制周期重新配置观测器，并复位状态。
+ *
+ * 可在启动前或运行中调用；函数会用默认调谐参数重建配置、复位状态并清零输出。
+ * 参数非法(<=0)时直接返回，不改动现有配置。观测器电气参数与电机参数不一致
+ * 会直接导致角度/转速估计偏差，因此电机参数更新后应重新调用。
+ *
+ * @param rs_ohm 定子相电阻，单位 ohm。
+ * @param ls_h 定子相电感，单位 H。
+ * @param flux_wb 永磁体磁链，单位 Wb。
+ * @param pole_pairs 极对数。
+ * @param sample_time_s 控制周期，单位 s。
+ * @return 0 表示成功；负值表示参数非法。
+ */
+int sl_observer_app_config(float rs_ohm,
+                           float ls_h,
+                           float flux_wb,
+                           unsigned short pole_pairs,
+                           float sample_time_s);
+
+/**
  * @brief 单拍更新无感观测器(在电机控制 ISR 内调用)。
  *
  * 内部先用 @ref svm_clarke 把三相电流变换到 alpha/beta,再执行一次

@@ -14,11 +14,22 @@
 #include "gpio.h"
 #include "syscon.h"
 
+#include "ns800_protect_config.h"
+
 #ifdef RT_USING_FINSH
 #include "finsh.h"
 #endif
 
 #define NS800_PWM_APP_EPWM_COUNT  6U
+
+/** @brief 需要清除的全部 one-shot trip 标志。 */
+#define NS800_PWM_APP_OST_FLAGS_ALL    (EPWM_TZ_OST_FLAG_OST1 | EPWM_TZ_OST_FLAG_OST2 | \
+                                        EPWM_TZ_OST_FLAG_OST3 | EPWM_TZ_OST_FLAG_OST4 | \
+                                        EPWM_TZ_OST_FLAG_OST5 | EPWM_TZ_OST_FLAG_OST6 | \
+                                        EPWM_TZ_OST_FLAG_DCAEVT1 | EPWM_TZ_OST_FLAG_DCBEVT1 | \
+                                        EPWM_TZ_OST_FLAG_CAPEVT)
+/** @brief trip 判据使用的 TZFLG 位。 */
+#define NS800_PWM_APP_TZ_FLAGS_ALL     (EPWM_TZ_FLAG_OST | EPWM_TZ_FLAG_DCAEVT1)
 
 struct ns800_pwm_pin
 {
@@ -45,6 +56,8 @@ static const struct ns800_pwm_module pwm_modules[NS800_PWM_APP_EPWM_COUNT] =
 };
 
 static rt_uint32_t pwm_duty[NS800_PWM_APP_EPWM_COUNT][2];
+
+static void pwm_trip_config_one(EPWM_TypeDef *epwm);
 
 static rt_uint16_t pwm_cmp_from_permille(rt_uint32_t duty_permille)
 {
@@ -136,6 +149,10 @@ static void pwm_module_init(rt_uint32_t index)
     EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_NO_CHANGE, EPWM_AQ_OUTPUT_ON_TIMEBASE_UP_CMPB);
     EPWM_setActionQualifierAction(module->epwm, EPWM_AQ_OUTPUT_B, EPWM_AQ_OUTPUT_NO_CHANGE, EPWM_AQ_OUTPUT_ON_TIMEBASE_DOWN_CMPB);
     pwm_deadband_init(module->epwm);
+
+    /* 在计数器启动之前先装好硬件跳闸通路，保证第一个 PWM 边沿就受保护。 */
+    pwm_trip_config_one(module->epwm);
+
     EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_A, cmp);
     EPWM_setCounterCompareValue(module->epwm, EPWM_COUNTER_COMPARE_B, cmp);
     EPWM_setTimeBaseCounterMode(module->epwm, EPWM_COUNTER_MODE_UP_DOWN);
@@ -219,6 +236,108 @@ int ns800_pwm_app_stop(void)
 
     return 0;
 }
+
+int ns800_pwm_app_resume(void)
+{
+    rt_uint32_t i;
+
+    for (i = 0U; i < NS800_PWM_APP_EPWM_COUNT; i++)
+    {
+        EPWM_TypeDef *epwm = pwm_modules[i].epwm;
+
+        /* 解除 stop() 里的 AQ 强制低，并重新使能死区/互补(force-low 会关掉 DB)。 */
+        pwm_deadband_init(epwm);
+        EPWM_setCounterCompareValue(epwm, EPWM_COUNTER_COMPARE_A, NS800_PWM_APP_TBPRD);
+        EPWM_setCounterCompareValue(epwm, EPWM_COUNTER_COMPARE_B, NS800_PWM_APP_TBPRD);
+        pwm_duty[i][0] = 0U;
+        pwm_duty[i][1] = 0U;
+        EPWM_setTimeBaseCounterMode(epwm, EPWM_COUNTER_MODE_UP_DOWN);
+    }
+
+    return 0;
+}
+
+static void pwm_trip_config_one(EPWM_TypeDef *epwm)
+{
+    /* DCAEVT1 的输入来自 ePWM X-BAR TRIP5(见 ns800_protect_config.h)。
+     * 注意 ns800_protect.c 必须把 ADC PPB 事件放在同一条 TRIP 线上。 */
+    EPWM_selectDigitalCompareTripInput(epwm,
+                                       NS800_PROTECT_DC_TRIP_INPUT,
+                                       EPWM_DC_TYPE_DCAH);
+    EPWM_setDigitalCompareEventSource(epwm,
+                                      EPWM_DC_MODULE_A,
+                                      EPWM_DC_EVENT_1,
+                                      EPWM_DC_EVENT_SOURCE_ORIG_SIGNAL);
+    EPWM_setTripZoneDigitalCompareEventCondition(epwm,
+                                                 EPWM_TZ_DC_OUTPUT_A1,
+                                                 EPWM_TZ_EVENT_DCXH_HIGH);
+
+    /* 一次性跳闸动作：A/B 都拉低(高低侧全关)，软件强制 OST 也走同一动作。 */
+    EPWM_setTripZoneAction(epwm, EPWM_TZ_ACTION_EVENT_TZA, EPWM_TZ_ACTION_LOW);
+    EPWM_setTripZoneAction(epwm, EPWM_TZ_ACTION_EVENT_TZB, EPWM_TZ_ACTION_LOW);
+    EPWM_setTripZoneAction(epwm, EPWM_TZ_ACTION_EVENT_DCAEVT1, EPWM_TZ_ACTION_LOW);
+
+    EPWM_clearOneShotTripZoneFlag(epwm, NS800_PWM_APP_OST_FLAGS_ALL);
+    EPWM_clearTripZoneFlag(epwm, NS800_PWM_APP_TZ_FLAGS_ALL);
+    EPWM_enableTripZoneSignals(epwm, EPWM_TZ_SIGNAL_DCAEVT1);
+}
+
+int ns800_pwm_app_trip_config(void)
+{
+    rt_uint32_t i;
+
+    for (i = 0U; i < NS800_PWM_APP_EPWM_COUNT; i++)
+    {
+        pwm_trip_config_one(pwm_modules[i].epwm);
+    }
+
+    return 0;
+}
+
+void ns800_pwm_app_trip_force(void)
+{
+    rt_uint32_t i;
+
+    for (i = 0U; i < NS800_PWM_APP_EPWM_COUNT; i++)
+    {
+        EPWM_forceTripZoneEvent(pwm_modules[i].epwm, EPWM_TZ_FORCE_EVENT_OST);
+    }
+}
+
+void ns800_pwm_app_trip_clear(void)
+{
+    rt_uint32_t i;
+
+    for (i = 0U; i < NS800_PWM_APP_EPWM_COUNT; i++)
+    {
+        EPWM_TypeDef *epwm = pwm_modules[i].epwm;
+
+        EPWM_clearOneShotTripZoneFlag(epwm, NS800_PWM_APP_OST_FLAGS_ALL);
+        EPWM_clearTripZoneFlag(epwm, NS800_PWM_APP_TZ_FLAGS_ALL);
+    }
+}
+
+rt_bool_t ns800_pwm_app_trip_active(void)
+{
+    rt_uint32_t i;
+
+    for (i = 0U; i < NS800_PWM_APP_EPWM_COUNT; i++)
+    {
+        EPWM_TypeDef *epwm = pwm_modules[i].epwm;
+
+        if ((EPWM_getTripZoneFlagStatus(epwm) & NS800_PWM_APP_TZ_FLAGS_ALL) != 0U)
+        {
+            return RT_TRUE;
+        }
+        if ((EPWM_getOneShotTripZoneFlagStatus(epwm) & EPWM_TZ_OST_FLAG_DCAEVT1) != 0U)
+        {
+            return RT_TRUE;
+        }
+    }
+
+    return RT_FALSE;
+}
+
 
 int ns800_pwm_app_set_duty(rt_uint32_t epwm_id, rt_uint32_t channel, rt_uint32_t duty_permille)
 {

@@ -34,6 +34,26 @@ typedef struct
     volatile rt_uint32_t adc_seq;
     /**< 当前电机控制模式。 */
     volatile ns800_motor_mode_t mode;
+    /**< 无感起动状态：0=空闲,1=I/F 强拖,2=速度闭环。 */
+    volatile rt_uint32_t start_state;
+    /**< I/F 锁定计数(连续满足切换条件的控制拍数)。 */
+    volatile rt_uint32_t lock_count;
+    /**< 观测器估计转速，单位 rpm。 */
+    volatile float observer_speed_rpm;
+    /**< 观测器输出是否有效。 */
+    volatile rt_bool_t observer_valid;
+    /**< ADC 实测 HVDC 母线电压，单位 V。 */
+    volatile float measured_hvdc_v;
+    /**< ADC 实测 LVDC 母线电压，单位 V。 */
+    volatile float measured_lvdc_v;
+    /**< motguard 线程累计看到的故障事件位。 */
+    volatile rt_uint32_t guard_fault_flags;
+    /**< motguard 执行停机的系统 tick；0 表示未动作。 */
+    volatile rt_uint32_t guard_action_tick;
+    /**< 保护链当前状态位(见 ns800_protect.h)。 */
+    volatile rt_uint32_t protect_flags;
+    /**< 是否处于故障停机锁存状态。 */
+    volatile rt_bool_t tripped;
     /**< 最近一拍控制输出。 */
     ns800_motor_output_t last_output;
 } ns800_motor_app_status_t;
@@ -65,6 +85,32 @@ int ns800_motor_app_stop(void);
  * @return 0 表示成功；负值表示失败。
  */
 int ns800_motor_app_set_mode(ns800_motor_mode_t mode);
+
+/**
+ * @brief 启动无感速度闭环。
+ *
+ * 若观测器已经有效则直接进入速度环；否则先进入 I/F 强拖，等观测器锁定后由
+ * 控制 ISR 自动切到速度环。已处于闭环时只更新速度给定。
+ *
+ * @return 0 表示已接受；负值表示当前处于故障锁存，需先 @ref ns800_motor_app_clear_trip。
+ */
+int ns800_motor_app_start_speed(void);
+
+/**
+ * @brief 清除故障停机锁存并恢复 PWM/控制中断。
+ *
+ * 调用后电机回到 STOP 模式，需要重新下发 `motor_ol` 或 `motor_speed`。
+ *
+ * @return 0 表示成功。
+ */
+int ns800_motor_app_clear_trip(void);
+
+/**
+ * @brief 查询是否处于故障停机锁存。
+ *
+ * @return RT_TRUE 表示已锁存，控制输出已被封锁。
+ */
+rt_bool_t ns800_motor_app_is_tripped(void);
 
 /**
  * @brief 获取电机应用层状态。

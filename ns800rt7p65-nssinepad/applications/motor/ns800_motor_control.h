@@ -25,8 +25,9 @@ extern "C" {
 /**
  * @brief 电机控制运行模式。
  *
- * OPEN_LOOP 用于无传感器的开环 SVM/PWM 链路验证；TORQUE 与 SPEED
- * 需要有效的转子角度/速度反馈，当前由平台层反馈接口提供。
+ * OPEN_LOOP 用于无传感器的开环 SVM/PWM 链路验证；IF_START 用开环电角度
+ * 做 q 轴电流强拖(无感起动的第一步)；TORQUE 与 SPEED 需要有效的转子角度/
+ * 速度反馈，本工程由无感观测器经 `ns800_motor_feedback_get()` 提供。
  */
 typedef enum
 {
@@ -38,6 +39,8 @@ typedef enum
     NS800_MOTOR_MODE_TORQUE,
     /**< 速度-电流串级 PID 闭环模式。 */
     NS800_MOTOR_MODE_SPEED,
+    /**< I/F 起动：开环电频率 + q 轴电流闭环强拖，供无感观测器建立反电动势。 */
+    NS800_MOTOR_MODE_IF_START,
 } ns800_motor_mode_t;
 
 /**
@@ -55,6 +58,7 @@ typedef enum
     NS800_MOTOR_STATUS_LOW_DC_VOLTAGE = 1u << 4,
     NS800_MOTOR_STATUS_OVERMODULATION = 1u << 5,
     NS800_MOTOR_STATUS_CLAMPED = 1u << 6,
+    NS800_MOTOR_STATUS_BUS_FALLBACK = 1u << 7,
 } ns800_motor_status_t;
 
 /**
@@ -107,6 +111,8 @@ typedef struct
     float max_speed_rad_s;
     /**< 电流环输出 dq 电压限幅，单位 V。 */
     float max_voltage_v;
+    /**< I/F 起动加速度，单位 rpm/s。 */
+    float if_accel_rpm_per_s;
     /**< d 轴电流 PI 配置。 */
     svm_pi_config_t current_d;
     /**< q 轴电流 PI 配置。 */
@@ -132,6 +138,8 @@ typedef struct
     svm_pi_state_t current_q;
     /**< 速度 PI 状态。 */
     svm_pi_state_t speed;
+    /**< I/F 起动当前强拖转速，单位 rpm。 */
+    float if_ramp_rpm;
 } ns800_motor_state_t;
 
 /**
@@ -158,9 +166,15 @@ typedef struct
 typedef struct
 {
     svm_abc_f32_t phase_current_abc;
+    /**< ADC 实测 HVDC 母线电压，单位 V。 */
+    float hvdc_v;
+    /**< ADC 实测 LVDC 母线电压，单位 V。 */
+    float lvdc_v;
     float theta_m_rad;
     float omega_m_rad_s;
     bool adc_valid;
+    /**< ADC 母线电压是否可用于 SVM；为 false 时回退到配置常量。 */
+    bool bus_valid;
     bool feedback_valid;
 } ns800_motor_sample_t;
 
@@ -248,8 +262,9 @@ float ns800_motor_mech_to_elec_angle(const ns800_motor_params_t *params, float t
 /**
  * @brief 执行一拍功率分配无刷电机控制。
  *
- * 开环模式直接生成 24 V、300 rpm 旋转电压矢量；闭环模式执行 Clarke/Park、
- * 速度 PI、电流 PI、逆 Park 和双端口 SVM。
+ * 开环模式直接生成旋转电压矢量；I/F 模式在强制电角度上做 q 轴电流闭环；
+ * 速度/力矩模式执行 Clarke/Park、速度 PI、电流 PI、逆 Park 和双端口 SVM。
+ * SVM 的端口电压优先使用 ADC 实测母线，ADC 无效时回退到配置常量。
  *
  * @param state 控制状态，函数会更新 PI 与 NCO。
  * @param cfg 控制配置；为空时使用默认配置。
@@ -263,6 +278,21 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
                                       const ns800_motor_params_t *params,
                                       const ns800_motor_input_t *in,
                                       ns800_motor_output_t *out);
+
+/**
+ * @brief 预置速度环积分器，实现 I/F 到速度闭环的无扰切换。
+ *
+ * 令 PI 输出等于当前力矩指令：integrator = torque - kp * error。
+ *
+ * @param state 控制状态。
+ * @param cfg 控制配置。
+ * @param torque_nm 期望的当前力矩输出，单位 Nm。
+ * @param error_rad_s 切换时刻的速度误差，单位 rad/s。
+ */
+void ns800_motor_speed_preload(ns800_motor_state_t *state,
+                               const ns800_motor_config_t *cfg,
+                               float torque_nm,
+                               float error_rad_s);
 
 #ifdef __cplusplus
 }

@@ -281,6 +281,7 @@ void ns800_motor_default_config(ns800_motor_config_t *cfg)
     cfg->max_torque_nm = NS800_MOTOR_DEFAULT_MAX_TORQUE_NM;
     cfg->max_speed_rad_s = NS800_MOTOR_DEFAULT_MAX_SPEED_RAD_S;
     cfg->max_voltage_v = NS800_MOTOR_DEFAULT_MAX_VOLTAGE_V;
+    cfg->if_accel_rpm_per_s = NS800_MOTOR_DEFAULT_IF_ACCEL_RPM_PER_S;
     cfg->current_d = motor_make_pi(NS800_MOTOR_DEFAULT_CURRENT_KP,
                                    NS800_MOTOR_DEFAULT_CURRENT_KI,
                                    cfg->sample_time_s,
@@ -338,6 +339,7 @@ void ns800_motor_reset(ns800_motor_state_t *state)
     svm_pi_init_state(&state->current_d);
     svm_pi_init_state(&state->current_q);
     svm_pi_init_state(&state->speed);
+    state->if_ramp_rpm = 0.0f;
 }
 
 /**
@@ -378,10 +380,71 @@ float ns800_motor_mech_to_elec_angle(const ns800_motor_params_t *params, float t
 }
 
 /**
+ * @brief 解析本拍 SVM 使用的端口电压。
+ *
+ * 优先使用 ADC 实测的 HVDC/LVDC 母线；实测值缺失、过低或高压侧不高于低压侧时，
+ * 回退到配置常量，并置 @ref NS800_MOTOR_STATUS_BUS_FALLBACK 供诊断。
+ *
+ * @param cfg 控制配置(提供回退值与最小直流电压)。
+ * @param in 单拍输入(提供实测母线)。
+ * @param hvdc_v 输出高压侧母线电压，单位 V。
+ * @param lvdc_v 输出低压侧母线电压，单位 V。
+ * @param status 输入输出状态位图。
+ */
+static void motor_resolve_bus(const ns800_motor_config_t *cfg,
+                              const ns800_motor_input_t *in,
+                              float *hvdc_v,
+                              float *lvdc_v,
+                              uint32_t *status)
+{
+    float min_v = cfg->svm.min_dc_voltage;
+
+    if ((in->sample.bus_valid == true) &&
+        (in->sample.lvdc_v > min_v) &&
+        (in->sample.hvdc_v > (in->sample.lvdc_v + min_v)))
+    {
+        *hvdc_v = in->sample.hvdc_v;
+        *lvdc_v = in->sample.lvdc_v;
+        return;
+    }
+
+    *hvdc_v = cfg->hvdc_port_voltage_v;
+    *lvdc_v = cfg->lvdc_port_voltage_v;
+    *status |= (uint32_t)NS800_MOTOR_STATUS_BUS_FALLBACK;
+}
+
+/**
+ * @brief 预置速度环积分器，实现 I/F 到速度闭环的无扰切换。
+ *
+ * @param state 控制状态。
+ * @param cfg 控制配置。
+ * @param torque_nm 期望的当前力矩输出，单位 Nm。
+ * @param error_rad_s 切换时刻的速度误差，单位 rad/s。
+ */
+void ns800_motor_speed_preload(ns800_motor_state_t *state,
+                               const ns800_motor_config_t *cfg,
+                               float torque_nm,
+                               float error_rad_s)
+{
+    float integrator;
+
+    if ((state == 0) || (cfg == 0))
+    {
+        return;
+    }
+
+    integrator = torque_nm - (cfg->speed.kp * error_rad_s);
+    integrator = motor_clamp(integrator, cfg->speed.integrator_min, cfg->speed.integrator_max);
+    state->speed.integrator = integrator;
+    state->speed.previous_error = error_rad_s;
+}
+
+/**
  * @brief 执行一拍功率分配无刷电机控制。
  *
  * - STOP：保持输出清零。
  * - OPEN_LOOP：用 NCO 生成旋转电压矢量，直接进入双端口 SVM。
+ * - IF_START：用 NCO 强制电角度做 q 轴电流闭环，转速按配置加速度爬升。
  * - TORQUE/SPEED：需要 ADC 电流和转子反馈，执行 Clarke/Park、速度 PI、
  *   电流 PI、逆 Park 与双端口 SVM。
  *
@@ -411,6 +474,12 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
     float torque_cmd_nm;
     float vd_ff;
     float vq_ff;
+    float hvdc_v;
+    float lvdc_v;
+    float ramp_rpm;
+    float ramp_step_rpm;
+    float ramp_target_rpm;
+    float iq_if_a;
 
     if ((state == 0) || (in == 0) || (out == 0))
     {
@@ -453,6 +522,8 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
         return NS800_MOTOR_STATUS_OK;
     }
 
+    motor_resolve_bus(cfg, in, &hvdc_v, &lvdc_v, &status);
+
     if (in->command.mode == NS800_MOTOR_MODE_OPEN_LOOP)
     {
         out->theta_e_rad = state->open_loop_nco.angle_rad;
@@ -463,9 +534,8 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
         out->output_power_w = motor_output_power(&out->voltage_cmd_abc, &in->sample.phase_current_abc);
         svm_status = svm_compute_dual(&out->voltage_cmd_ab,
                                       xi,
-                                      motor_svm_upper_voltage(cfg->hvdc_port_voltage_v,
-                                                              cfg->lvdc_port_voltage_v),
-                                      cfg->lvdc_port_voltage_v,
+                                      motor_svm_upper_voltage(hvdc_v, lvdc_v),
+                                      lvdc_v,
                                       &cfg->svm,
                                       &out->duty);
         status = motor_status_from_svm(status, svm_status);
@@ -474,16 +544,104 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
         return (ns800_motor_status_t)status;
     }
 
+    /* 以下模式都依赖 ADC 相电流。 */
     if (!in->sample.adc_valid)
     {
-        status |= (uint32_t)NS800_MOTOR_STATUS_SAMPLE_FAULT;
-    }
-    if (!in->sample.feedback_valid)
-    {
-        out->status = status | (uint32_t)NS800_MOTOR_STATUS_FEEDBACK_FAULT;
+        out->status = status | (uint32_t)NS800_MOTOR_STATUS_SAMPLE_FAULT;
         return (ns800_motor_status_t)out->status;
     }
 
+    if ((in->command.mode == NS800_MOTOR_MODE_IF_START) ||
+        (in->command.mode == NS800_MOTOR_MODE_SPEED) ||
+        (in->command.mode == NS800_MOTOR_MODE_TORQUE))
+    {
+        if ((in->command.mode != NS800_MOTOR_MODE_IF_START) && !in->sample.feedback_valid)
+        {
+            out->status = status | (uint32_t)NS800_MOTOR_STATUS_FEEDBACK_FAULT;
+            return (ns800_motor_status_t)out->status;
+        }
+    }
+
+    if (in->command.mode == NS800_MOTOR_MODE_IF_START)
+    {
+        /* ---- I/F 起动：开环电角度 + q 轴电流闭环 ---- */
+        ramp_target_rpm = motor_abs(in->command.speed_ref_rpm);
+        ramp_step_rpm = motor_positive_limit(cfg->if_accel_rpm_per_s) * cfg->sample_time_s;
+        ramp_rpm = state->if_ramp_rpm;
+
+        if (ramp_rpm < ramp_target_rpm)
+        {
+            ramp_rpm += ramp_step_rpm;
+            if (ramp_rpm > ramp_target_rpm)
+            {
+                ramp_rpm = ramp_target_rpm;
+            }
+        }
+        else if (ramp_rpm > ramp_target_rpm)
+        {
+            ramp_rpm -= ramp_step_rpm;
+            if (ramp_rpm < ramp_target_rpm)
+            {
+                ramp_rpm = ramp_target_rpm;
+            }
+        }
+        state->if_ramp_rpm = ramp_rpm;
+
+        out->theta_e_rad = state->open_loop_nco.angle_rad;
+        out->omega_m_rad_s = ramp_rpm * NS800_MOTOR_RPM_TO_RAD_S;
+        out->speed_ref_rad_s = out->omega_m_rad_s;
+        svm_sincos(out->theta_e_rad, &sc);
+        svm_clarke(&in->sample.phase_current_abc, &out->current_ab);
+        svm_park(&out->current_ab, &sc, &out->current_dq);
+
+        out->current_ref_dq.d = motor_clamp(cfg->id_ref_a, -current_limit, current_limit);
+        iq_if_a = motor_abs(in->command.iq_ref_a);
+        if (iq_if_a < 1.0e-3f)
+        {
+            /* 未给定拖动电流时用电流限幅的一半兜底，避免零力矩起不来。 */
+            iq_if_a = 0.5f * iq_limit;
+        }
+        out->current_ref_dq.q = motor_clamp(iq_if_a, 0.0f, iq_limit);
+        out->current_error_dq.d = out->current_ref_dq.d - out->current_dq.d;
+        out->current_error_dq.q = out->current_ref_dq.q - out->current_dq.q;
+
+        vd_ff = (params->phase_resistance_ohm * out->current_dq.d) -
+                (((float)params->pole_pairs * out->omega_m_rad_s) * params->lq_h * out->current_dq.q);
+        vq_ff = (params->phase_resistance_ohm * out->current_dq.q) +
+                ((float)params->pole_pairs * out->omega_m_rad_s) *
+                ((params->ld_h * out->current_dq.d) + params->flux_wb);
+
+        out->voltage_cmd_dq.d = svm_pi_update(&state->current_d,
+                                              &cfg->current_d,
+                                              out->current_error_dq.d,
+                                              in->command.reset) + vd_ff;
+        out->voltage_cmd_dq.q = svm_pi_update(&state->current_q,
+                                              &cfg->current_q,
+                                              out->current_error_dq.q,
+                                              in->command.reset) + vq_ff;
+        out->voltage_cmd_dq.d = motor_clamp(out->voltage_cmd_dq.d, -voltage_limit, voltage_limit);
+        out->voltage_cmd_dq.q = motor_clamp(out->voltage_cmd_dq.q, -voltage_limit, voltage_limit);
+
+        svm_inverse_park(&out->voltage_cmd_dq, &sc, &out->voltage_cmd_ab);
+        svm_inverse_clarke(&out->voltage_cmd_ab, &out->voltage_cmd_abc);
+        out->output_power_w = motor_output_power(&out->voltage_cmd_abc, &in->sample.phase_current_abc);
+        svm_status = svm_compute_dual(&out->voltage_cmd_ab,
+                                      xi,
+                                      motor_svm_upper_voltage(hvdc_v, lvdc_v),
+                                      lvdc_v,
+                                      &cfg->svm,
+                                      &out->duty);
+        status = motor_status_from_svm(status, svm_status);
+        out->status = status;
+
+        svm_nco_set_frequency(&state->open_loop_nco,
+                              (ramp_rpm / 60.0f) * (float)params->pole_pairs,
+                              cfg->sample_time_s);
+        svm_nco_step(&state->open_loop_nco);
+        return (ns800_motor_status_t)status;
+    }
+
+    /* ---- TORQUE / SPEED：基于观测器(或编码器)反馈的 FOC ---- */
     out->theta_e_rad = ns800_motor_mech_to_elec_angle(params, in->sample.theta_m_rad);
     out->omega_m_rad_s = in->sample.omega_m_rad_s;
     svm_sincos(out->theta_e_rad, &sc);
@@ -538,9 +696,8 @@ ns800_motor_status_t ns800_motor_step(ns800_motor_state_t *state,
     out->output_power_w = motor_output_power(&out->voltage_cmd_abc, &in->sample.phase_current_abc);
     svm_status = svm_compute_dual(&out->voltage_cmd_ab,
                                   xi,
-                                  motor_svm_upper_voltage(cfg->hvdc_port_voltage_v,
-                                                          cfg->lvdc_port_voltage_v),
-                                  cfg->lvdc_port_voltage_v,
+                                  motor_svm_upper_voltage(hvdc_v, lvdc_v),
+                                  lvdc_v,
                                   &cfg->svm,
                                   &out->duty);
     status = motor_status_from_svm(status, svm_status);

@@ -53,6 +53,33 @@ int sl_observer_app_start(void)
     return 0;
 }
 
+int sl_observer_app_config(float rs_ohm,
+                           float ls_h,
+                           float flux_wb,
+                           unsigned short pole_pairs,
+                           float sample_time_s)
+{
+    if ((rs_ohm <= 0.0f) || (ls_h <= 0.0f) || (pole_pairs == 0U) || (sample_time_s <= 0.0f))
+    {
+        return -1;
+    }
+
+    sl_observer_default_config(&s_obs_cfg);
+    s_obs_cfg.rs_ohm = rs_ohm;
+    s_obs_cfg.ls_h = ls_h;
+    s_obs_cfg.flux_wb = flux_wb;
+    s_obs_cfg.pole_pairs = (uint16_t)pole_pairs;
+    s_obs_cfg.sample_time_s = sample_time_s;
+
+    /* PLL 与电流观测器必须使用同一个真实控制周期，否则等效增益偏 2 倍。 */
+    s_obs_cfg.pll_pi.sample_time_s = sample_time_s;
+
+    sl_observer_init(&s_obs_state, &s_obs_cfg);
+    sl_observer_app_clear_output();
+
+    return 0;
+}
+
 void sl_observer_app_update(const svm_ab_f32_t *v_ab, const svm_abc_f32_t *i_abc)
 {
     svm_ab_f32_t i_ab;
